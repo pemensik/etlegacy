@@ -46,6 +46,7 @@ despite its great age.
 
 %install
 %cmake_install
+exit 0
 
 
 %check
