@@ -37,6 +37,10 @@ despite its great age.
 %prep
 %autosetup -n %{name}-%{gittag}
 
+# Validation complains for mail address. I think this is error
+# https://www.freedesktop.org/software/appstream/docs/chap-Metadata.html#tag-url
+# mailto is explicitly mentioned.
+sed -e 's|>\(mailto:\)\?mail@etlegacy.com</url>|>https://discord.gg/UBAZFys</url>|' -i misc/com.etlegacy.ETLegacy.metainfo.xml
 
 %build
 %cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo -DBUNDLED_LIBS=OFF -DCROSS_COMPILE32=OFF \
