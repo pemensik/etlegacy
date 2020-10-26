@@ -1,13 +1,21 @@
 %define __cmake_in_source_build 1
 
+%global gitcommit 1ee8c7e848d6d8aa1f243b378888d5149952ee20
+%global snapdate 20201026
+%global snapinfo %{snapdate}git%(echo %{gitcommit}| cut -c 1-8)
+#%%global gittag v%%{version}
+%global gittag %{gitcommit}
+
 Name:           etlegacy
-Version:        2.76 
-Release:        1%{?dist}
+Version:        2.76
+# v2.76 tag has broken builds, snap has to be used from current master
+Release:        1%{?snapinfo:.%{snapinfo}}%{?dist}
 Summary:        Fully compatible client and server for the popular online FPS game Wolfenstein: Enemy Territory 
 
 License:        GPLv3
 URL:            https://www.etlegacy.com/
-Source0:        https://github.com/etlegacy/etlegacy/archive/v%{version}/%{name}-%{version}.tar.gz
+#Source0:        https://github.com/etlegacy/etlegacy/archive/v%%{version}/%%{name}-%%{version}.tar.gz
+Source0:        https://github.com/etlegacy/etlegacy/archive/%{gittag}/%{name}-%{gittag}.tar.gz
 #Source1:        https://mirror.etlegacy.com/wolfadmin/wolfadmin.tar.gz
 
 BuildRequires:  gcc gcc-c++
@@ -17,6 +25,8 @@ BuildRequires:  libtheora-devel libogg-devel libvorbis-devel libjpeg-turbo-devel
 BuildRequires:  glew-devel
 BuildRequires:  lua-devel
 BuildRequires:  openal-soft-devel minizip-devel
+BuildRequires:  desktop-file-utils
+BuildRequires:  libappstream-glib
 #Requires:       
 
 %description
@@ -25,23 +35,36 @@ for the popular online FPS game Wolfenstein: Enemy Territory - whose gameplay is
 despite its great age. 
 
 %prep
-%autosetup
+%autosetup -n %{name}-%{gittag}
 
 
 %build
-%cmake -DBUNDLED_LIBS=OFF -DCROSS_COMPILE32=OFF \
-	-DBUILD_MOD=OFF -DFEATURE_RENDERER2=OFF
-%make_build
+%cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo -DBUNDLED_LIBS=OFF -DCROSS_COMPILE32=OFF \
+       -DBUILD_MOD=OFF -DFEATURE_RENDERER2=OFF
+%cmake_build
 
 
 %install
-%make_install
+%cmake_install
+
+
+%check
+desktop-file-validate %{buildroot}%{_datadir}/applications/com.etlegacy.ETLegacy.desktop
+appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/com.etlegacy.ETLegacy.metainfo.xml
 
 
 %files
 %license COPYING.txt
 %doc README.md
-
+%{_bindir}/etl
+%{_bindir}/etlded
+%{_mandir}/man6/etl.6*
+%{_mandir}/man6/etlded.6*
+# FIXME: Move to %%_libdir
+%{_usr}/lib/%{name}
+%{_datadir}/icons/hicolor/scalable/apps/etl*
+%{_datadir}/applications/com.etlegacy.ETLegacy.desktop
+%{_metainfodir}/com.etlegacy.ETLegacy.metainfo.xml
 
 
 %changelog
