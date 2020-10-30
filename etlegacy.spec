@@ -1,5 +1,11 @@
 %define __cmake_in_source_build 1
 
+# TODO: Current release does not work
+# https://github.com/etlegacy/etlegacy/issues/1517
+# Using master commit
+#
+# FIXME: debug information is not yet working
+
 %global gitcommit 1ee8c7e848d6d8aa1f243b378888d5149952ee20
 %global snapdate 20201026
 %global snapinfo %{snapdate}git%(echo %{gitcommit}| cut -c 1-8)
