@@ -6,8 +6,8 @@
 #
 # FIXME: debug information is not yet working
 
-%global gitcommit 1ee8c7e848d6d8aa1f243b378888d5149952ee20
-%global snapdate 20201026
+%global gitcommit 886f0ef0d6a48b527a25409dbd6eb350e6610e48
+%global snapdate 20201102
 %global snapinfo %{snapdate}git%(echo %{gitcommit}| cut -c 1-8)
 #%%global gittag v%%{version}
 %global gittag %{gitcommit}
@@ -15,7 +15,7 @@
 Name:           etlegacy
 Version:        2.76
 # v2.76 tag has broken builds, snap has to be used from current master
-Release:        1%{?snapinfo:.%{snapinfo}}%{?dist}
+Release:        2%{?snapinfo:.%{snapinfo}}%{?dist}
 Summary:        Fully compatible client and server for the popular online FPS game Wolfenstein: Enemy Territory 
 
 License:        GPLv3
@@ -83,5 +83,8 @@ appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/com.etlegacy.E
 
 
 %changelog
+* Mon Nov 02 2020 Petr Menšík <pemensik@redhat.com> - 2.76-2.20201102git886f0ef0
+- Update to more recent commit
+
 * Mon Oct 26 2020 Petr Menšík <pemensik@redhat.com>
 - initial package build
