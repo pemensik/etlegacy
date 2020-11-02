@@ -24,6 +24,7 @@ URL:            https://www.etlegacy.com/
 Source0:        https://github.com/etlegacy/etlegacy/archive/%{gittag}/%{name}-%{gittag}.tar.gz
 #Source1:        https://mirror.etlegacy.com/wolfadmin/wolfadmin.tar.gz
 
+# https://github.com/etlegacy/etlegacy/pull/1519
 Patch1:         etlegacy-2.76-description-install.patch
 
 BuildRequires:  gcc gcc-c++
