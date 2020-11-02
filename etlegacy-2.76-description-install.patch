@@ -1,0 +1,13 @@
+diff --git a/cmake/ETLInstall.cmake b/cmake/ETLInstall.cmake
+index e5327a112..72082b136 100644
+--- a/cmake/ETLInstall.cmake
++++ b/cmake/ETLInstall.cmake
+@@ -5,7 +5,7 @@
+ # description file - see FS_GetModList
+ install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/misc/description.txt"
+ 	DESTINATION "${INSTALL_DEFAULT_MODDIR}/${MODNAME}"
+-	PERMISSIONS OWNER_WRITE OWNER_READ OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE
++	PERMISSIONS OWNER_WRITE OWNER_READ GROUP_READ WORLD_READ
+ )
+ 
+ # misc/etmain/ adds

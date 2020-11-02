@@ -24,6 +24,8 @@ URL:            https://www.etlegacy.com/
 Source0:        https://github.com/etlegacy/etlegacy/archive/%{gittag}/%{name}-%{gittag}.tar.gz
 #Source1:        https://mirror.etlegacy.com/wolfadmin/wolfadmin.tar.gz
 
+Patch1:         etlegacy-2.76-description-install.patch
+
 BuildRequires:  gcc gcc-c++
 BuildRequires:  cmake
 BuildRequires:  libpng-devel freetype-devel SDL2-devel curl-devel openssl-devel sqlite-devel
@@ -41,7 +43,7 @@ for the popular online FPS game Wolfenstein: Enemy Territory - whose gameplay is
 despite its great age. 
 
 %prep
-%autosetup -n %{name}-%{gittag}
+%autosetup -n %{name}-%{gittag} -p1
 
 # Validation complains for mail address. I think this is error
 # https://www.freedesktop.org/software/appstream/docs/chap-Metadata.html#tag-url
@@ -56,7 +58,6 @@ sed -e 's|>\(mailto:\)\?mail@etlegacy.com</url>|>https://discord.gg/UBAZFys</url
 
 %install
 %cmake_install
-exit 0
 
 
 %check
@@ -80,4 +81,4 @@ appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/com.etlegacy.E
 
 %changelog
 * Mon Oct 26 2020 Petr Menšík <pemensik@redhat.com>
-- 
+- initial package build
