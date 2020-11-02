@@ -53,8 +53,8 @@ despite its great age.
 sed -e 's|>\(mailto:\)\?mail@etlegacy.com</url>|>https://discord.gg/UBAZFys</url>|' -i misc/com.etlegacy.ETLegacy.metainfo.xml
 
 %build
-%cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo -DBUNDLED_LIBS=OFF -DCROSS_COMPILE32=OFF \
-       -DBUILD_MOD=OFF -DFEATURE_RENDERER2=OFF
+%cmake -DBUNDLED_LIBS=OFF -DCROSS_COMPILE32=OFF -DBUILD_MOD=OFF \
+       -DFEATURE_RENDERER2=ON
 %cmake_build
 
 
