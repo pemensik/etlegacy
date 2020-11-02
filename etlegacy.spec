@@ -54,7 +54,7 @@ sed -e 's|>\(mailto:\)\?mail@etlegacy.com</url>|>https://discord.gg/UBAZFys</url
 
 %build
 %cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo -DBUNDLED_LIBS=OFF -DCROSS_COMPILE32=OFF \
-       -DBUILD_MOD=OFF -DFEATURE_RENDERER2=OFF -DCMAKE_STRIP=/bin/true
+       -DBUILD_MOD=OFF -DFEATURE_RENDERER2=OFF
 %cmake_build
 
 
