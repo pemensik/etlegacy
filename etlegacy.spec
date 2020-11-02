@@ -35,7 +35,8 @@ BuildRequires:  lua-devel
 BuildRequires:  openal-soft-devel minizip-devel
 BuildRequires:  desktop-file-utils
 BuildRequires:  libappstream-glib
-#Requires:       
+
+Requires:       shared-mime-info
 
 %description
 Welcome to ET: Legacy, an open source project that aims to create a fully compatible client and server
@@ -77,6 +78,7 @@ appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/com.etlegacy.E
 %{_datadir}/icons/hicolor/scalable/apps/etl*
 %{_datadir}/applications/com.etlegacy.ETLegacy.desktop
 %{_metainfodir}/com.etlegacy.ETLegacy.metainfo.xml
+%{_datadir}/mime/packages/etlegacy.xml
 
 
 %changelog
