@@ -12,6 +12,9 @@
 #%%global gittag v%%{version}
 %global gittag %{gitcommit}
 
+# etl is also RH internal tool. Rename binary to etlegacy
+%bcond_with altbin
+
 Name:           etlegacy
 Version:        2.76
 # v2.76 tag has broken builds, snap has to be used from current master
@@ -60,7 +63,11 @@ sed -e 's|>\(mailto:\)\?mail@etlegacy.com</url>|>https://discord.gg/UBAZFys</url
 
 %install
 %cmake_install
-
+%if %{with altbin}
+mv %{buildroot}%{_bindir}/{etl,etlegacy}
+mv %{buildroot}%{_mandir}/man6/et{l,legacy}.6*
+sed -e 's/^Exec=etl /Exec=etlegacy /' -i %{buildroot}%{_datadir}/applications/com.etlegacy.ETLegacy.desktop
+%endif
 
 %check
 desktop-file-validate %{buildroot}%{_datadir}/applications/com.etlegacy.ETLegacy.desktop
@@ -70,10 +77,8 @@ appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/com.etlegacy.E
 %files
 %license COPYING.txt
 %doc README.md
-%{_bindir}/etl
-%{_bindir}/etlded
-%{_mandir}/man6/etl.6*
-%{_mandir}/man6/etlded.6*
+%{_bindir}/etl*
+%{_mandir}/man6/etl*.6*
 # FIXME: Move to %%_libdir
 %{_usr}/lib/%{name}
 %{_datadir}/icons/hicolor/scalable/apps/etl*
