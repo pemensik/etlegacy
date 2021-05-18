@@ -23,7 +23,7 @@
 Name:           etlegacy
 Version:        2.77.1
 # v2.76 tag has broken builds, snap has to be used from current master
-Release:        0%{?snapinfo:.%{snapinfo}}%{?dist}
+Release:        1%{?snapinfo:.%{snapinfo}}%{?dist}
 Summary:        Fully compatible client and server for the popular online FPS game Wolfenstein: Enemy Territory 
 
 License:        GPLv3
@@ -54,7 +54,7 @@ despite its great age.
 
 %build
 %cmake -DBUNDLED_LIBS=OFF -DCROSS_COMPILE32=OFF -DBUILD_MOD=OFF \
-       -DFEATURE_RENDERER2=ON
+       -DFEATURE_RENDERER2=ON -DINSTALL_DEFAULT_BASEDIR=%{_prefix}
 %cmake_build
 
 
@@ -85,6 +85,9 @@ appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/com.etlegacy.E
 
 
 %changelog
+* Wed May 19 2021 Petr Menšík <pemensik@redhat.com> - 2.77.1-1
+- Update to 2.77.1
+
 * Mon Nov 02 2020 Petr Menšík <pemensik@redhat.com> - 2.76-2.20201102git886f0ef0
 - Update to more recent commit
 
