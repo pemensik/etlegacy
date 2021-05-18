@@ -509,7 +509,7 @@ void G_RunMissile(gentity_t *ent)
 		}
 	}
 
-	if (level.tracemapLoaded && ent->s.pos.trType == TR_GRAVITY && ent->r.contents != CONTENTS_CORPSE)
+	if (ent->r.contents != CONTENTS_CORPSE)
 	{
 		if (ent->count)
 		{
@@ -528,18 +528,31 @@ void G_RunMissile(gentity_t *ent)
 
 				//G_ExplodeMissile(ent);  // play explode sound
 				G_FreeEntity(ent);      // and delete it
-				return;
 			}
 			else
 			{
-				float skyFloor, skyHeight, groundFloor;
+				vec3_t tmp;
 
-				skyFloor    = BG_GetTracemapSkyGroundFloor();   // lowest sky height point
-				skyHeight   = BG_GetSkyHeightAtPoint(origin);
-				groundFloor = BG_GetTracemapGroundFloor();
+				VectorCopy(origin, tmp);
+				tmp[2] = MAX_MAP_SIZE;
+				trap_Trace(&tr, origin, NULL, NULL, tmp, ent->s.number, ent->clipmask);
 
-				// is ent under the ground limit, and ground valid
-				if (origin[2] < groundFloor && groundFloor != MAX_MAP_SIZE)
+				// are we in worldspace again
+				if (tr.fraction == 1.f)
+				{
+					G_RunThink(ent);
+
+					VectorCopy(origin, ent->r.currentOrigin);   // keep the previous origin to don't go too far
+					VectorCopy(angle, ent->r.currentAngles);
+
+					return;     // keep flying
+				}
+
+				tmp[2] = -MAX_MAP_SIZE;
+				trap_Trace(&tr, origin, NULL, NULL, tmp, ent->s.number, ent->clipmask);
+
+				// is ent go under the ground limit
+				if (tr.fraction == 1.f)
 				{
 					gentity_t *tent;
 
@@ -553,19 +566,8 @@ void G_RunMissile(gentity_t *ent)
 					return;
 				}
 
-				// are we in worldspace again - or did we hit a ceiling from the outside of the world
-				if (skyHeight == MAX_MAP_SIZE && origin[2] >= skyFloor)
-				{
-					G_RunThink(ent);
-
-					VectorCopy(origin, ent->r.currentOrigin);   // keep the previous origin to don't go too far
-					VectorCopy(angle, ent->r.currentAngles);
-
-					return;     // keep flying
-				}
-
 				// is ent above the sky limit
-				if (skyHeight <= origin[2])
+				if (tr.surfaceFlags & SURF_SKY)
 				{
 					G_RunThink(ent);
 					return; // keep flying
@@ -577,6 +579,7 @@ void G_RunMissile(gentity_t *ent)
 				ent->count  = 0;
 				ent->count2 = 1;
 			}
+			return;
 		}
 		else if (!ent->count2 && BG_GetSkyHeightAtPoint(origin) - BG_GetGroundHeightAtPoint(origin) > 1024)
 		{
@@ -589,16 +592,25 @@ void G_RunMissile(gentity_t *ent)
 
 			if (ent->count2 == 1)
 			{
-				VectorSubtract(origin, ent->r.currentOrigin, impactpos);
-				VectorMA(origin, 16, impactpos, impactpos);
-
-				trap_Trace(&mortar_tr, origin, ent->r.mins, ent->r.maxs, impactpos, ent->r.ownerNum, ent->clipmask);
-
-				if (mortar_tr.fraction != 1.f && !(mortar_tr.surfaceFlags & SURF_NOIMPACT))
+				if (ent->s.pos.trType == TR_LINEAR)
 				{
 					// missile go down, play the falling sound
 					G_AddEvent(ent, EV_MISSILE_FALLING, 0);
 					ent->count2 = 2;
+				}
+				else
+				{
+					VectorSubtract(origin, ent->r.currentOrigin, impactpos);
+					VectorMA(origin, 16, impactpos, impactpos);
+
+					trap_Trace(&mortar_tr, origin, ent->r.mins, ent->r.maxs, impactpos, ent->r.ownerNum, ent->clipmask);
+
+					if (mortar_tr.fraction != 1.f && !(mortar_tr.surfaceFlags & SURF_NOIMPACT))
+					{
+						// missile go down, play the falling sound
+						G_AddEvent(ent, EV_MISSILE_FALLING, 0);
+						ent->count2 = 2;
+					}
 				}
 			}
 
@@ -633,10 +645,7 @@ void G_RunMissile(gentity_t *ent)
 
 	if (tr.fraction != 1.f)
 	{
-		/*qboolean exploded = qfalse;*/
-
-		if (level.tracemapLoaded && ent->s.pos.trType == TR_GRAVITY && ent->r.contents != CONTENTS_CORPSE
-		    && (tr.surfaceFlags & SURF_SKY))
+		if (ent->r.contents != CONTENTS_CORPSE && (tr.surfaceFlags & SURF_SKY))
 		{
 			// goes through sky
 			ent->count = 1;
@@ -655,12 +664,12 @@ void G_RunMissile(gentity_t *ent)
 		{
 			if (ent->s.pos.trType != TR_STATIONARY)
 			{
-				/*exploded = */ G_MissileImpact(ent, &tr, GetWeaponFireTableData(ent->s.weapon)->impactDamage);
+				G_MissileImpact(ent, &tr, GetWeaponFireTableData(ent->s.weapon)->impactDamage);
 			}
 		}
 		else
 		{
-			/*exploded =*/ G_MissileImpact(ent, &tr, GetWeaponFireTableData(ent->s.weapon)->impactDamage);
+			G_MissileImpact(ent, &tr, GetWeaponFireTableData(ent->s.weapon)->impactDamage);
 		}
 
 		if (ent->s.eType != ET_MISSILE)
@@ -1190,6 +1199,72 @@ void DynaFree(gentity_t *self)
 
 		G_Script_ScriptEvent(hit, "defused", "");
 	}
+}
+
+/**
+ * @brief G_ChainFree
+ * @param[in] self
+ */
+void G_ChainFree(gentity_t *self)
+{
+	float     dist;
+	gentity_t *ent;
+	int       entityList[MAX_GENTITIES];
+	int       numListedEntities;
+	vec3_t    mins, maxs;
+	vec3_t    v;
+	int       i, e;
+	float     boxradius;
+
+	boxradius = M_SQRT2 * GetWeaponTableData(self->s.weapon)->splashRadius; // radius * sqrt(2) for bounding box enlargement --
+	// bounding box was checking against radius / sqrt(2) if collision is along box plane
+	for (i = 0 ; i < 3 ; i++)
+	{
+		mins[i] = self->s.origin[i] - boxradius;
+		maxs[i] = self->s.origin[i] + boxradius;
+	}
+
+	numListedEntities = trap_EntitiesInBox(mins, maxs, entityList, MAX_GENTITIES);
+
+	for (e = 0 ; e < numListedEntities ; e++)
+	{
+		ent = &g_entities[entityList[e]];
+
+		if (ent == self)
+		{
+			continue;
+		}
+		if (!ent->takedamage && (!ent->dmgparent || !ent->dmgparent->takedamage)
+		    && !(self->methodOfDeath == MOD_DYNAMITE && ent->s.weapon == WP_DYNAMITE))
+		{
+			continue;
+		}
+
+		G_AdjustedDamageVec(ent, self->s.origin, v);
+
+		dist = VectorLength(v);
+		if (dist >= GetWeaponTableData(self->s.weapon)->splashRadius)
+		{
+			continue;
+		}
+
+		// dyno chaining
+		// only if within blast radius and both on the same objective or both or no objectives
+		if (self->methodOfDeath == MOD_DYNAMITE && ent->s.weapon == WP_DYNAMITE)
+		{
+			G_DPrintf("dyno chaining: inflictor: %p, ent: %p\n", self->onobjective, ent->onobjective);
+
+			if (self->onobjective == ent->onobjective)
+			{
+				// free the other dynamite now too since they are peers
+				ent->nextthink = level.time;
+
+				ent->think = G_ChainFree;
+			}
+		}
+	}
+
+	G_FreeEntity(self);
 }
 
 /**

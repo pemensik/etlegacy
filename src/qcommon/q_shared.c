@@ -1395,7 +1395,7 @@ qboolean Q_isanumber(const char *s)
  */
 qboolean Q_isintegral(float f)
 {
-	return (int)f == f;
+	return (int)f == f; // NOLINT(cppcoreguidelines-narrowing-conversions)
 }
 
 /**
@@ -1410,6 +1410,27 @@ int Q_isforfilename(int c)
 		return(1);
 	}
 	return (0);
+}
+
+/**
+ * get rid of 0x80+ and '%' chars, because old clients don't like them
+ * @param string buffer to check
+ * @param len length of the buffer
+ */
+void Q_SafeNetString(char *string, size_t len, qboolean strip)
+{
+	int i = 0;
+	for (; i < len; ++i)
+	{
+		if (!string[i])
+		{
+			break;
+		}
+		if ((strip && (byte)string[i] > 127) || string[i] == '%')
+		{
+			string[i] = '.';
+		}
+	}
 }
 
 #ifdef _MSC_VER
@@ -1978,7 +1999,7 @@ int QDECL Com_sprintf(char *dest, unsigned int size, const char *fmt, ...)
 
 	if (len >= size)
 	{
-		Com_Printf("Com_sprintf: Output length %u too short, require %d bytes.\n", size, len + 1);
+		Com_Printf(S_COLOR_RED "ERROR: " S_COLOR_GREEN "Com_sprintf output length %u too short, require %d bytes.\n", size, len + 1);
 	}
 
 	return len;
@@ -2032,7 +2053,7 @@ char *QDECL va(const char *format, ...)
 	size_t        len;
 
 	va_start(argptr, format);
-	vsprintf(temp_buffer, format, argptr); // Q_vsnprintf ???
+	Q_vsnprintf(temp_buffer, MAX_VA_STRING, format, argptr);
 	va_end(argptr);
 
 	if ((len = strlen(temp_buffer)) >= MAX_VA_STRING)

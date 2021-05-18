@@ -235,6 +235,10 @@ void R_ImageList_f(void)
 		case 4:
 			Ren_Print("RGBA ");
 			break;
+		case GL_RGB8_OES:
+		case GL_COMPRESSED_RGBA_S3TC_DXT1_EXT:
+			Ren_Print("S3TC ");
+			break;
 		case GL_RGBA4:
 			Ren_Print("RGBA4");
 			break;
@@ -2275,7 +2279,7 @@ void R_LoadCacheImages(void)
 		for (i = 0; i < 4; i++)
 		{
 			token    = COM_ParseExt(&pString, qfalse);
-			parms[i] = atoi(token);
+			parms[i] = Q_atoi(token);
 		}
 		R_FindImageFile(name, parms[0], parms[1], parms[2], parms[3]);
 	}

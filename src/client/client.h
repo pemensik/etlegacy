@@ -190,6 +190,21 @@ extern clientActive_t cl;
 
 //==================================================================
 
+typedef struct
+{
+	char demoName[MAX_QPATH];
+	qboolean recording;
+	qboolean playing;
+	qboolean pure;							///< are we starting the demo with sv_pure 1 emulation?
+	qboolean waiting;                       ///< don't record until a non-delta message is received
+	qboolean firstFrameSkipped;
+	fileHandle_t file;
+
+	int timeFrames;                         ///< counter of rendered frames
+	int timeStart;                          ///< cls.realtime before first frame
+	int timeBaseTime;                       ///< each frame will be at this time + frameNum * 50
+} demo_t;
+
 /**
  * @struct clientConnection_t
  * @brief The clientConnection_t structure is wiped when disconnecting from a server,
@@ -241,20 +256,11 @@ typedef struct
 	char serverCommands[MAX_RELIABLE_COMMANDS][MAX_TOKEN_CHARS];
 
 	// demo information
-	char demoName[MAX_QPATH];
-	qboolean demorecording;
-	qboolean demoplaying;
-	qboolean demowaiting;                       ///< don't record until a non-delta message is received
-	qboolean firstDemoFrameSkipped;
-	fileHandle_t demofile;
+	demo_t demo;
 
 	qboolean waverecording;
 	fileHandle_t wavefile;
 	int wavetime;
-
-	int timeDemoFrames;                         ///< counter of rendered frames
-	int timeDemoStart;                          ///< cls.realtime before first frame
-	int timeDemoBaseTime;                       ///< each frame will be at this time + frameNum * 50
 
 	//float aviVideoFrameRemainder;
 	//float aviSoundFrameRemainder;
@@ -298,6 +304,7 @@ typedef struct
 	int32_t clients;
 	int32_t humans;
 	int32_t maxClients;
+	int32_t privateClients;
 	int32_t minPing;
 	int32_t maxPing;
 	int32_t ping;
@@ -311,6 +318,12 @@ typedef struct
 	int32_t balancedteams;
 	char gameName[MAX_NAME_LENGTH];
 } serverInfo_t;
+
+typedef struct
+{
+	char *buffer;
+	size_t bufferSize;
+} clipboardCapture_t;
 
 /**
  * @struct clientStatic_t
@@ -368,6 +381,8 @@ typedef struct
 	//qhandle_t consoleShader2;
 
 	download_t download;
+
+	clipboardCapture_t clipboard;
 
 	int cinematicHandle;
 } clientStatic_t;

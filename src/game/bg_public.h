@@ -42,12 +42,6 @@
 #define GAME_VERSION        "Enemy Territory"
 #define GAME_VERSION_DATED  (GAME_VERSION ", ET 2.60b")
 
-#ifdef __GNUC__
-#define _attribute(x) __attribute__(x)
-#else
-#define _attribute(x)
-#endif
-
 #if defined(CGAMEDLL) || defined(FEATURE_SERVERMDX)
 #define USE_MDXFILE
 #endif
@@ -88,8 +82,8 @@
 #define DEAD_BODYHEIGHT_DELTA            20 ///< dead    body height 4
 #define PRONE_BODYHEIGHT_DELTA           0  ///< prone   body height -8
 
-#define PRONE_BODYHEIGHT_BBOX -8    ///<
-#define DEAD_BODYHEIGHT_BBOX -8     ///< was the result of DEFAULT_VIEWHEIGHT - CROUCH_VIEWHEIGHT (40 - 16) stored in crouchMaxZ
+#define PRONE_BODYHEIGHT_BBOX 12    ///< it appears that 12 is the magic number for the minimum maxs[2] that prevents player from getting stuck into the world.
+#define DEAD_BODYHEIGHT_BBOX 24     ///< was the result of DEFAULT_VIEWHEIGHT - CROUCH_VIEWHEIGHT (40 - 16) stored in crouchMaxZ
 
 extern vec3_t playerlegsProneMins;
 extern vec3_t playerlegsProneMaxs;
@@ -689,7 +683,7 @@ typedef enum
 typedef enum
 {
 	PERS_SCORE = 0,                ///< !!! MUST NOT CHANGE, SERVER AND GAME BOTH REFERENCE !!!
-	PERS_HITS,                     ///< total points damage inflicted so damage beeps can sound on change
+	PERS_HITS,                     ///< Deprecated. Remove?
 	PERS_RANK,
 	PERS_TEAM,
 	PERS_SPAWN_COUNT,              ///< incremented every respawn
@@ -700,7 +694,7 @@ typedef enum
 	PERS_RESPAWNS_PENALTY,         ///< how many respawns you have to sit through before respawning again
 
 	PERS_REVIVE_COUNT,
-	PERS_HEADSHOTS,
+	PERS_HEADSHOTS,                ///< Deprecated. Remove?
 	PERS_BLEH_3,
 
 	// mg42                        ///< TODO: I don't understand these here. Can someone explain?
@@ -922,6 +916,14 @@ typedef enum
 	HR_LEGS,
 	HR_NUM_HITREGIONS,
 } hitRegion_t;
+
+typedef enum
+{
+	HIT_NONE = 0,
+	HIT_TEAMSHOT,
+	HIT_HEADSHOT,
+	HIT_BODYSHOT
+} hitEvent_t;
 
 // MAPVOTE
 
@@ -1340,12 +1342,12 @@ typedef enum
 	//EV_DEATH3,
 	EV_OBITUARY = 68,
 	EV_STOPSTREAMINGSOUND,///< swiped from sherman
-	EV_POWERUP_QUAD,
-	EV_POWERUP_BATTLESUIT,
-	EV_POWERUP_REGEN,
-	EV_GIB_PLAYER,         ///< gib a previously living player
+	//EV_POWERUP_QUAD,
+	//EV_POWERUP_BATTLESUIT,
+	//EV_POWERUP_REGEN,
+	EV_GIB_PLAYER = 73,         ///< gib a previously living player
 	//EV_DEBUG_LINE,
-	EV_STOPLOOPINGSOUND = 75, ///< unused
+	//EV_STOPLOOPINGSOUND,
 	//EV_TAUNT,
 	EV_SMOKE = 77,
 	EV_SPARKS,
@@ -1402,7 +1404,8 @@ typedef enum
 	EV_BODY_DP,        ///< 128
 	EV_FLAG_INDICATOR, ///< 129 - objective indicator
 	EV_MISSILE_FALLING,///< 130
-	EV_MAX_EVENTS      ///< 131 - just added as an 'endcap'
+	EV_PLAYER_HIT,     ///< 131
+	EV_MAX_EVENTS      ///< 132 - just added as an 'endcap'
 } entity_event_t;
 
 extern const char *eventnames[EV_MAX_EVENTS];

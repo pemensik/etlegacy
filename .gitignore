@@ -18,11 +18,13 @@ etmain/ui/git_version.h
 *~
 *.sh
 !/misc/*.sh
+!/release.sh
 /.directory
 *.kdev4
 
 # Mac
 .DS_STORE
+Brewfile.lock.json
 
 # Windows
 Thumbs.db
@@ -62,3 +64,7 @@ win_resource.aps
 # Do not under any circumstances ignore these
 !/easybuild.sh
 !/easybuild.bat
+
+node_modules/
+package.json
+package-lock.json

@@ -1325,7 +1325,7 @@ qboolean CG_SpeakerEditor_NoiseEdit_KeyDown(panel_button_t *button, int key)
 		{
 			char dirname[MAX_QPATH];
 			char filename[MAX_QPATH];
-			char match[MAX_QPATH];
+			char match[MAX_QPATH] = { 0 };
 			int  i, numfiles, filelen;
 			char *fileptr;
 
@@ -1578,7 +1578,7 @@ void CG_SpeakerEditor_WaitEditFinish(panel_button_t *button)
 {
 	if (*button->text)
 	{
-		editSpeaker->wait = atoi(button->text);
+		editSpeaker->wait = Q_atoi(button->text);
 		if (editSpeaker->wait < 0)
 		{
 			editSpeaker->wait = 0;
@@ -1600,7 +1600,7 @@ void CG_SpeakerEditor_RandomEditFinish(panel_button_t *button)
 {
 	if (*button->text)
 	{
-		editSpeaker->random = atoi(button->text);
+		editSpeaker->random = Q_atoi(button->text);
 		if (editSpeaker->random < 0)
 		{
 			editSpeaker->random = 0;
@@ -1622,7 +1622,7 @@ void CG_SpeakerEditor_VolumeEditFinish(panel_button_t *button)
 {
 	if (*button->text)
 	{
-		editSpeaker->volume = atoi(button->text);
+		editSpeaker->volume = Q_atoi(button->text);
 		if (editSpeaker->volume < 0)
 		{
 			editSpeaker->volume = 0;
@@ -1649,7 +1649,7 @@ void CG_SpeakerEditor_RangeEditFinish(panel_button_t *button)
 {
 	if (*button->text)
 	{
-		editSpeaker->range = atoi(button->text);
+		editSpeaker->range = Q_atoi(button->text);
 		if (editSpeaker->range < 0)
 		{
 			editSpeaker->range = 0;
@@ -2002,7 +2002,7 @@ panel_button_t speakerEditorRandomEdit =
 	NULL,                             // keyUp
 	CG_SpeakerEditor_RenderEdit,
 	CG_SpeakerEditor_RandomEditFinish,
-    0,
+	0,
 };
 
 panel_button_t speakerEditorVolumeLabel =
@@ -2090,7 +2090,7 @@ panel_button_t speakerEditorCancelButton =
 	CG_SpeakerEditor_Cancel_KeyUp,// keyUp
 	CG_SpeakerEditor_RenderButton,
 	NULL,
-    0,
+	0,
 };
 
 panel_button_t speakerEditorDeleteButton =

@@ -904,6 +904,20 @@ static panel_button_t chatPanelVoteButton =
 	0
 };
 
+static panel_button_t chatPanelVoteNowButton =
+{
+	NULL,
+	"^3VOTE NOW",
+	{ SCREEN_WIDTH - 10 - 60 - 4 - 60 - 4,SCREEN_HEIGHT - 30,                           60, 16 },
+	{ 0,                             0,                                            0,  0, 0, 0, 0, 0},
+	NULL,                            // font
+	CG_Debriefing_VoteButton_KeyDown,// keyDown
+	NULL,                            // keyUp
+	CG_Debriefing_VoteNowButton_Draw,
+	NULL,
+	0
+};
+
 static panel_button_t chatPanelQCButton =
 {
 	NULL,
@@ -1079,9 +1093,6 @@ void CG_MapVote_MultiVoteButton_Draw(panel_button_t *button)
 
 		CG_PanelButtonsRender_Button_Ext(&button->rect, str);
 	}
-
-
-	return;
 }
 
 /**
@@ -1097,11 +1108,20 @@ void CG_MapVoteList_Draw(panel_button_t *button)
 	static vec4_t acolor = { 1.0f, 1.0f, 1.0f, 1.0f };
 	int           diff;
 
-	CG_Text_Paint_Ext(290, y2, button->font->scalex,
-	                  button->font->scaley, button->font->colour,
-	                  (cgs.mapVoteMapY <= 0 ? "" :
-	                   va("Map %d of %d", cgs.mapVoteMapX + 1, cgs.mapVoteMapY)),
-	                  0, 0, 0, button->font->font);
+	// display map number if server is configured
+	// to reset XP after certain number of maps
+	if (cgs.mapVoteMapY > 0)
+	{
+		const char* s;
+		float w;
+
+		s = va("Map %d of %d", cgs.mapVoteMapX + 1, cgs.mapVoteMapY);
+		w = CG_Text_Width_Ext(s, button->font->scalex, 0, button->font->font);
+		CG_Text_Paint_Ext(DB_MAPNAME_X + 10 + cgs.wideXoffset + DB_MAPVOTE_X * 0.5f - w * 0.5f, y2,
+			              button->font->scalex, button->font->scaley, button->font->colour,
+		                  s, 0, 0, 0, button->font->font);
+	}
+
 	y2 += 15;
 
 	for (i = 0; i + cgs.dbMapVoteListOffset < cgs.dbNumMaps && i < 16; i++)
@@ -1116,7 +1136,7 @@ void CG_MapVoteList_Draw(panel_button_t *button)
 			fileHandle_t f;
 			vec4_t       clr = { 1.f, 1.f, 1.f, 0.3f };
 
-			CG_FillRect(button->rect.x, y - 10, 250, 12, clr);
+			CG_FillRect(button->rect.x, y - 10, 245, 12, clr);
 
 			// display the photograph image only..
 			// ..and make it fade in nicely.
@@ -1160,10 +1180,15 @@ void CG_MapVoteList_Draw(panel_button_t *button)
 
 			vec4_t *colour = &button->font->colour;
 
-			// add gradient color to identify third most votes maps
+			// add gradient color to identify three most voted maps
 			for (j = 0; j < 3; j++)
 			{
-				if (cgs.dbSortedVotedMapsByTotal[j].mapID == i + cgs.dbMapVoteListOffset)
+				if (cgs.dbSortedVotedMapsByTotal[j].totalVotes <= 0)
+				{
+					continue;
+				}
+
+				if (cgs.dbSortedVotedMapsByTotal[j].mapID == (i + cgs.dbMapVoteListOffset))
 				{
 					if (j == 0)
 					{
@@ -1189,7 +1214,6 @@ void CG_MapVoteList_Draw(panel_button_t *button)
 
 		y += 12;
 	}
-	return;
 }
 
 /**
@@ -1217,18 +1241,28 @@ qboolean CG_MapVote_VoteSend_KeyDown(panel_button_t *button, int key)
 		}
 		else
 		{
-			int i;
+			int      i;
+			int      votedMapID[3];
+			qboolean mapVoted = qfalse;
 
 			for (i = 0; i < 3; i++)
 			{
 				if (cgs.dbMapVotedFor[i] != -1)
 				{
-					trap_SendClientCommand(va("mapvote %d %d %d",
-					                          cgs.dbMapID[cgs.dbMapVotedFor[0]],
-					                          cgs.dbMapID[cgs.dbMapVotedFor[1]],
-					                          cgs.dbMapID[cgs.dbMapVotedFor[2]]));
-					return qtrue;
+					votedMapID[i] = cgs.dbMapID[cgs.dbMapVotedFor[i]];
+					mapVoted      = qtrue;
 				}
+				else
+				{
+					votedMapID[i] = -1;
+				}
+			}
+
+			if (mapVoted)
+			{
+				trap_SendClientCommand(va("mapvote %d %d %d", votedMapID[0], votedMapID[1], votedMapID[2]));
+
+				return qtrue;
 			}
 		}
 	}
@@ -1315,8 +1349,6 @@ void CG_MapVote_VoteButton_Draw(panel_button_t *button)
 	{
 		CG_PanelButtonsRender_Button_Ext(&button->rect, (cgs.dbMapVotedFor[0] != -1) ? "^7RE-VOTE" : "^7VOTE");
 	}
-
-	return;
 }
 
 /**
@@ -1661,7 +1693,7 @@ void CG_Debriefing_ChatBox_Draw(panel_button_t *button)
 static panel_button_t *chatPanelButtons[] =
 {
 	&chatPanelWindow,       &chatPanelText,
-	&chatPanelNextButton,   &chatPanelVoteButton,&chatPanelQCButton,  &chatTypeButton, &chatPanelReadyButton,
+	&chatPanelNextButton,   &chatPanelVoteButton,&chatPanelVoteNowButton,  &chatPanelQCButton, &chatTypeButton, &chatPanelReadyButton,
 	&charPanelEditSurround, &charPanelEdit,
 	NULL
 };
@@ -1720,12 +1752,12 @@ void CG_Debriefing_Startup(void)
 	cgs.dbSelectedClient  = cg.clientNum;
 
 	// mapvote
-	cgs.dbSelectedMap        = -1;
-	cgs.dbMapListReceived    = qfalse;
-	cgs.dbVoteTallyReceived  = qfalse;
-	cgs.dbMapVotedFor[0]     = -1;
-	cgs.dbMapVotedFor[1]     = -1;
-	cgs.dbMapVotedFor[2]     = -1;
+	cgs.dbSelectedMap       = -1;
+	cgs.dbMapListReceived   = qfalse;
+	cgs.dbVoteTallyReceived = qfalse;
+	cgs.dbMapVotedFor[0]    = -1;
+	cgs.dbMapVotedFor[1]    = -1;
+	cgs.dbMapVotedFor[2]    = -1;
 
 	cgs.dbAwardsParsed = qfalse;
 
@@ -1737,10 +1769,10 @@ void CG_Debriefing_Startup(void)
 
 	trap_Cvar_Set("chattext", "");
 
-	if (atoi(buf) == -1)
+	if (Q_atoi(buf) == -1)
 	{
 	}
-	else if (atoi(buf))
+	else if (Q_atoi(buf))
 	{
 		trap_S_StartLocalSound(trap_S_RegisterSound("sound/music/allies_win.wav", qfalse), CHAN_LOCAL_SOUND);
 	}
@@ -2017,10 +2049,10 @@ void CG_DebriefingTitle_Draw(panel_button_t *button)
 		int defender, winner;
 
 		s        = CG_ConfigString(CS_MULTI_INFO);
-		defender = atoi(Info_ValueForKey(s, "d")); // defender
+		defender = Q_atoi(Info_ValueForKey(s, "d")); // defender
 
 		s      = CG_ConfigString(CS_MULTI_MAPWINNER);
-		winner = atoi(Info_ValueForKey(s, "w"));
+		winner = Q_atoi(Info_ValueForKey(s, "w"));
 
 		if (cgs.currentRound)
 		{
@@ -2261,9 +2293,9 @@ void CG_Debriefing_ParsePlayerTime(void)
 
 	for (i = 0; i < cgs.maxclients; i++)
 	{
-		cgs.clientinfo[i].timeAxis   = atoi(CG_Argv(i * 3 + 1));
-		cgs.clientinfo[i].timeAllies = atoi(CG_Argv(i * 3 + 2));
-		cgs.clientinfo[i].timePlayed = atoi(CG_Argv(i * 3 + 3));
+		cgs.clientinfo[i].timeAxis   = Q_atoi(CG_Argv(i * 3 + 1));
+		cgs.clientinfo[i].timeAllies = Q_atoi(CG_Argv(i * 3 + 2));
+		cgs.clientinfo[i].timePlayed = Q_atoi(CG_Argv(i * 3 + 3));
 	}
 	cgs.dbPlayerTimeReceived = qtrue;
 }
@@ -2295,7 +2327,7 @@ void CG_Debriefing_ParsePrestige(void)
 
 	for (i = 0; i < cgs.maxclients; i++)
 	{
-		cgs.clientinfo[i].prestige = atoi(CG_Argv(i + 1));
+		cgs.clientinfo[i].prestige = Q_atoi(CG_Argv(i + 1));
 	}
 	cgs.dbPrestigeReceived = qtrue;
 }
@@ -2310,12 +2342,12 @@ void CG_Debriefing_ParsePlayerKillsDeaths(void)
 
 	for (i = 0; i < cgs.maxclients; i++)
 	{
-		cgs.clientinfo[i].kills     = atoi(CG_Argv((i * 6) + 1));
-		cgs.clientinfo[i].deaths    = atoi(CG_Argv((i * 6) + 2));
-		cgs.clientinfo[i].gibs      = atoi(CG_Argv((i * 6) + 3));
-		cgs.clientinfo[i].selfKills = atoi(CG_Argv((i * 6) + 4));
-		cgs.clientinfo[i].teamKills = atoi(CG_Argv((i * 6) + 5));
-		cgs.clientinfo[i].teamGibs  = atoi(CG_Argv((i * 6) + 6));
+		cgs.clientinfo[i].kills     = Q_atoi(CG_Argv((i * 6) + 1));
+		cgs.clientinfo[i].deaths    = Q_atoi(CG_Argv((i * 6) + 2));
+		cgs.clientinfo[i].gibs      = Q_atoi(CG_Argv((i * 6) + 3));
+		cgs.clientinfo[i].selfKills = Q_atoi(CG_Argv((i * 6) + 4));
+		cgs.clientinfo[i].teamKills = Q_atoi(CG_Argv((i * 6) + 5));
+		cgs.clientinfo[i].teamGibs  = Q_atoi(CG_Argv((i * 6) + 6));
 	}
 	cgs.dbPlayerKillsDeathsReceived = qtrue;
 }
@@ -2327,16 +2359,16 @@ void CG_Debriefing_ParseWeaponStats(void)
 {
 	int i;
 
-	cgs.dbHitRegions[HR_HEAD] = atoi(CG_Argv(1));
-	cgs.dbHitRegions[HR_ARMS] = atoi(CG_Argv(2));
-	cgs.dbHitRegions[HR_BODY] = atoi(CG_Argv(3));
-	cgs.dbHitRegions[HR_LEGS] = atoi(CG_Argv(4));
+	cgs.dbHitRegions[HR_HEAD] = Q_atoi(CG_Argv(1));
+	cgs.dbHitRegions[HR_ARMS] = Q_atoi(CG_Argv(2));
+	cgs.dbHitRegions[HR_BODY] = Q_atoi(CG_Argv(3));
+	cgs.dbHitRegions[HR_LEGS] = Q_atoi(CG_Argv(4));
 
 	for (i = 0; i < WS_MAX; i++)
 	{
-		cgs.dbWeaponStats[i].numShots = atoi(CG_Argv((i * 3) + 5));
-		cgs.dbWeaponStats[i].numHits  = atoi(CG_Argv((i * 3) + 6));
-		cgs.dbWeaponStats[i].numKills = atoi(CG_Argv((i * 3) + 7));
+		cgs.dbWeaponStats[i].numShots = Q_atoi(CG_Argv((i * 3) + 5));
+		cgs.dbWeaponStats[i].numHits  = Q_atoi(CG_Argv((i * 3) + 6));
+		cgs.dbWeaponStats[i].numKills = Q_atoi(CG_Argv((i * 3) + 7));
 	}
 
 	cgs.dbWeaponStatsReceived = qtrue;
@@ -2366,7 +2398,7 @@ void CG_Debriefing_ParseAwards(void)
 	{
 		// clientNum
 		token     = COM_Parse(&cs);
-		clientNum = atoi(token);
+		clientNum = Q_atoi(token);
 
 		if (clientNum >= 0 && clientNum < MAX_CLIENTS)
 		{
@@ -3492,6 +3524,30 @@ void CG_Debriefing_VoteButton_Draw(panel_button_t *button)
 		return;
 	}
 
+	if (!(cg.snap->ps.eFlags & EF_VOTED))
+	{
+		return;
+	}
+
+	CG_PanelButtonsRender_Button(button);
+}
+
+/**
+ * @brief CG_Debriefing_VoteNowButton_Draw
+ * @param[in] button
+ */
+void CG_Debriefing_VoteNowButton_Draw(panel_button_t *button)
+{
+	if (cgs.gametype != GT_WOLF_MAPVOTE)
+	{
+		return;
+	}
+
+	if (cg.snap->ps.eFlags & EF_VOTED)
+	{
+		return;
+	}
+
 	CG_PanelButtonsRender_Button(button);
 }
 
@@ -3566,6 +3622,8 @@ void CG_Debriefing_ChatEditFinish(panel_button_t *button)
 {
 	char buffer[MAX_EDITFIELD];
 	trap_Cvar_VariableStringBuffer(button->text, buffer, MAX_EDITFIELD);
+
+	Q_EscapeUnicodeInPlace(buffer, MAX_EDITFIELD);
 
 	switch (cgs.dbChatMode)
 	{
@@ -3803,10 +3861,10 @@ void CG_Debriefing_MissionTitle_Draw(panel_button_t *button)
 		int defender, winner;
 
 		s        = CG_ConfigString(CS_MULTI_INFO);
-		defender = atoi(Info_ValueForKey(s, "d")); // defender
+		defender = Q_atoi(Info_ValueForKey(s, "d")); // defender
 
 		s      = CG_ConfigString(CS_MULTI_MAPWINNER);
-		winner = atoi(Info_ValueForKey(s, "w"));
+		winner = Q_atoi(Info_ValueForKey(s, "w"));
 
 		if (cgs.currentRound)
 		{
@@ -4275,8 +4333,8 @@ team_t CG_Debriefing_FindWinningTeamForPos(int pos)
 			                const char* s = CG_ConfigString( CS_MULTI_MAPWINNER );
 			                const char* buf = Info_ValueForKey( s, "w" );
 
-			                if( atoi( buf ) == -1 ) {
-			                } else if( atoi( buf ) ) {
+			                if( Q_atoi( buf ) == -1 ) {
+			                } else if( Q_atoi( buf ) ) {
 			                    return TEAM_ALLIES;
 			                } else {
 			                    return TEAM_AXIS;
@@ -4318,10 +4376,10 @@ team_t CG_Debriefing_FindWinningTeamForPos(int pos)
 		const char *s;
 
 		s        = CG_ConfigString(CS_MULTI_INFO);
-		defender = atoi(Info_ValueForKey(s, "d")); // defender
+		defender = Q_atoi(Info_ValueForKey(s, "d")); // defender
 
 		s      = CG_ConfigString(CS_MULTI_MAPWINNER);
-		winner = atoi(Info_ValueForKey(s, "w"));
+		winner = Q_atoi(Info_ValueForKey(s, "w"));
 
 		if (!cgs.currentRound)
 		{
@@ -4533,9 +4591,9 @@ void CG_parseMapVoteListInfo()
 		Q_strncpyz(cgs.dbMaps[i], CG_Argv((i * 4) + 2),
 		           sizeof(cgs.dbMaps[0]));
 		cgs.dbMapVotes[i]      = 0;
-		cgs.dbMapID[i]         = atoi(CG_Argv((i * 4) + 3));
-		cgs.dbMapLastPlayed[i] = atoi(CG_Argv((i * 4) + 4));
-		cgs.dbMapTotalVotes[i] = atoi(CG_Argv((i * 4) + 5));
+		cgs.dbMapID[i]         = Q_atoi(CG_Argv((i * 4) + 3));
+		cgs.dbMapLastPlayed[i] = Q_atoi(CG_Argv((i * 4) + 4));
+		cgs.dbMapTotalVotes[i] = Q_atoi(CG_Argv((i * 4) + 5));
 		if (CG_FindArenaInfo(va("scripts/%s.arena", cgs.dbMaps[i]),
 		                     cgs.dbMaps[i], &cgs.arenaData))
 		{
@@ -4571,7 +4629,7 @@ void CG_parseMapVoteTally()
 	numMaps = (trap_Argc() - 1);
 	for (i = 0; i < numMaps; i++)
 	{
-		cgs.dbMapVotes[i]  = atoi(CG_Argv(i + 1));
+		cgs.dbMapVotes[i]  = Q_atoi(CG_Argv(i + 1));
 		cgs.dbMapVotesSum += cgs.dbMapVotes[i];
 
 		// sort voted maps by total votes accumulated
@@ -4579,9 +4637,9 @@ void CG_parseMapVoteTally()
 		{
 			if (cgs.dbSortedVotedMapsByTotal[j].totalVotes < cgs.dbMapVotes[i])
 			{
-				if (cgs.dbSortedVotedMapsByTotal[j].totalVotes != -1)
+				if (j != MAX_VOTE_MAPS - 1 && cgs.dbSortedVotedMapsByTotal[j].totalVotes != -1)
 				{
-					memmove(cgs.dbSortedVotedMapsByTotal + j + 1, cgs.dbSortedVotedMapsByTotal + j, sizeof(sortedVotedMapByTotal_s) * (MAX_VOTE_MAPS - j - 1));
+					memmove(&cgs.dbSortedVotedMapsByTotal[j + 1], &cgs.dbSortedVotedMapsByTotal[j], sizeof(sortedVotedMapByTotal_s) * (MAX_VOTE_MAPS - j - 1));
 				}
 
 				cgs.dbSortedVotedMapsByTotal[j].mapID      = i;

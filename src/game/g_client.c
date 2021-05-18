@@ -642,7 +642,7 @@ void CopyToBodyQue(gentity_t *ent)
 	BODY_TEAM(body)      = ent->client->sess.sessionTeam;
 	BODY_CLASS(body)     = ent->client->sess.playerType;
 	BODY_CHARACTER(body) = ent->client->pers.characterIndex;
-	BODY_VALUE(body)     = 0;
+	BODY_VALUE(body) = 0;
 
 	//if ( ent->client->ps.eFlags & EF_PANTSED ){
 	//	body->s.time2 =	1;
@@ -1743,13 +1743,13 @@ void ClientUserinfoChanged(int clientNum)
 		/*
 		            case TOK_pmove_fixed:
 		                if ( cs_value[0] )
-		                    client->pers.pmoveFixed = atoi(cs_value);
+		                    client->pers.pmoveFixed = Q_atoi(cs_value);
 		                else
 		                    client->pers.pmoveFixed = 0;
 		                break;
 		            case TOK_pmove_msec:
 		                if ( cs_value[0] )
-		                    client->pers.pmoveMsec = atoi(cs_value);
+		                    client->pers.pmoveMsec = Q_atoi(cs_value);
 		                else
 		                    client->pers.pmoveMsec = 8;
 		                // paranoia
@@ -2295,7 +2295,7 @@ char *ClientConnect(int clientNum, qboolean firstTime, qboolean isBot)
 #endif
 
 #ifdef FEATURE_PRESTIGE
-	if (g_prestige.integer)
+	if (g_prestige.integer && g_gametype.integer != GT_WOLF_CAMPAIGN && g_gametype.integer != GT_WOLF_STOPWATCH && g_gametype.integer != GT_WOLF_LMS)
 	{
 		int i;
 
@@ -2306,8 +2306,8 @@ char *ClientConnect(int clientNum, qboolean firstTime, qboolean isBot)
 			G_SetPlayerSkill(client, i);
 		}
 	}
-	else
 #endif
+
 	if (firstTime && g_xpSaver.integer && g_gametype.integer == GT_WOLF_CAMPAIGN)
 	{
 		int i;
@@ -2480,13 +2480,13 @@ void ClientBegin(int clientNum)
 
 	if (client->sess.sessionTeam == TEAM_AXIS || client->sess.sessionTeam == TEAM_ALLIES)
 	{
-		client->inactivityTime        = level.time + (g_inactivity.integer ? g_inactivity.integer : 60) * 1000;
-		client->inactivitySecondsLeft = (g_inactivity.integer) ? g_inactivity.integer : 60;
+		client->inactivityTime        = level.time + G_InactivityValue * 1000;
+		client->inactivitySecondsLeft = G_InactivityValue;
 	}
 	else
 	{
-		client->inactivityTime        = level.time + (g_spectatorInactivity.integer ? g_spectatorInactivity.integer : 60) * 1000;
-		client->inactivitySecondsLeft = (g_spectatorInactivity.integer) ? g_spectatorInactivity.integer : 60;
+		client->inactivityTime        = level.time + G_SpectatorInactivityValue * 1000;
+		client->inactivitySecondsLeft = G_SpectatorInactivityValue;
 	}
 
 	// Changed below for team independant maxlives
@@ -2799,6 +2799,11 @@ void ClientSpawn(gentity_t *ent, qboolean revived, qboolean teamChange, qboolean
 	// unlagged
 
 	flags |= (client->ps.eFlags & EF_VOTED);
+
+	if (!teamChange)
+	{
+		flags |= (client->ps.eFlags & EF_READY);
+	}
 	// clear everything but the persistant data
 
 	ent->s.eFlags &= ~EF_MOUNTEDTANK;
@@ -3043,6 +3048,11 @@ void ClientSpawn(gentity_t *ent, qboolean revived, qboolean teamChange, qboolean
 		ent->health = client->ps.stats[STAT_HEALTH] = client->ps.stats[STAT_MAX_HEALTH];
 	}
 
+	if (ent->client->sess.playerType == PC_MEDIC)
+	{
+		ent->health = ent->client->ps.stats[STAT_HEALTH] /= 1.12;
+	}
+
 	G_SetOrigin(ent, spawn_origin);
 	VectorCopy(spawn_origin, client->ps.origin);
 
@@ -3071,16 +3081,16 @@ void ClientSpawn(gentity_t *ent, qboolean revived, qboolean teamChange, qboolean
 	}
 
 	client->respawnTime           = level.timeCurrent;
-	client->inactivityTime        = level.time + g_inactivity.integer * 1000;
+	client->inactivityTime        = level.time + G_InactivityValue * 1000;
 	client->inactivityWarning     = qfalse;
-	client->inactivitySecondsLeft = (g_inactivity.integer) ? g_inactivity.integer : 60;
+	client->inactivitySecondsLeft = G_InactivityValue;
 	client->latched_buttons       = 0;
 	client->latched_wbuttons      = 0;
 	client->deathTime             = 0;
 
 	if (level.intermissiontime)
 	{
-		MoveClientToIntermission(ent);
+		MoveClientToIntermission(ent, (EF_VOTED & client->ps.eFlags));
 
 		// send current mapvote tally
 		if (g_gametype.integer == GT_WOLF_MAPVOTE)
@@ -3177,8 +3187,8 @@ void ClientDisconnect(int clientNum)
 	{
 		G_SetClientPrestige(ent->client, qfalse);
 	}
-	else
 #endif
+
 	if (g_xpSaver.integer && g_gametype.integer == GT_WOLF_CAMPAIGN && !level.intermissiontime)
 	{
 		G_XPSaver_Store(ent->client);
@@ -3403,6 +3413,6 @@ float ClientHitboxMaxZ(gentity_t *hitEnt)
 	}
 	else
 	{
-		return DEFAULT_BODYHEIGHT;
+		return g_playerHitBoxHeight.value;
 	}
 }

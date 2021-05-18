@@ -37,7 +37,7 @@
 
 glconfig_t glConfig;
 qboolean   textureFilterAnisotropic = qfalse;
-int        maxAnisotropy            = 0;
+float      maxAnisotropy            = 2.f;
 
 glstate_t glState;
 
@@ -468,7 +468,7 @@ void RB_TakeScreenshotTGA(int x, int y, int width, int height, const char *fileN
 	memcount = linelen * height;
 
 	// gamma correct
-	if (glConfig.deviceSupportsGamma)
+	if (glConfig.deviceSupportsGamma && !tr.gammaProgramUsed)
 	{
 		R_GammaCorrect(allbuf + offset, memcount);
 	}
@@ -496,7 +496,7 @@ void RB_TakeScreenshotJPEG(int x, int y, int width, int height, char *fileName)
 	memcount = (width * 3 + padlen) * height;
 
 	// gamma correct
-	if (glConfig.deviceSupportsGamma)
+	if (glConfig.deviceSupportsGamma && !tr.gammaProgramUsed)
 	{
 		R_GammaCorrect(buffer + offset, memcount);
 	}
@@ -524,7 +524,7 @@ void RB_TakeScreenshotPNG(int x, int y, int width, int height, char *fileName)
 	memcount = (width * 3 + padlen) * height;
 
 	// gamma correct
-	if (glConfig.deviceSupportsGamma)
+	if (glConfig.deviceSupportsGamma && !tr.gammaProgramUsed)
 	{
 		R_GammaCorrect(buffer + offset, memcount);
 	}
@@ -658,7 +658,7 @@ const void *RB_TakeVideoFrameCmd(const void *data)
 	memcount = padwidth * cmd->height;
 
 	// gamma correct
-	if (glConfig.deviceSupportsGamma)
+	if (glConfig.deviceSupportsGamma && !tr.gammaProgramUsed)
 	{
 		R_GammaCorrect(cBuf, memcount);
 	}
@@ -759,7 +759,7 @@ void R_LevelShot(void)
 	}
 
 	// gamma correct
-	if (glConfig.deviceSupportsGamma)
+	if (glConfig.deviceSupportsGamma && !tr.gammaProgramUsed)
 	{
 		R_GammaCorrect(buffer + 18, 128 * 128 * 3);
 	}
@@ -790,6 +790,12 @@ void R_ScreenShot_f(void)
 	char       *ext = "";
 
 	ssFormat_t format = r_screenshotFormat->integer;
+
+	// Backwards compatibility
+	if (!Q_stricmp(ri.Cmd_Argv(0), "screenshotJPEG"))
+	{
+		format = SSF_JPEG;
+	}
 
 	switch (format)
 	{
@@ -1126,6 +1132,7 @@ void R_Register(void)
 	ri.Cmd_AddSystemCommand("skinlist", R_SkinList_f, "Print out the list of skins", NULL);
 	ri.Cmd_AddSystemCommand("modellist", R_Modellist_f, "Print out the list of loaded models", NULL);
 	ri.Cmd_AddSystemCommand("screenshot", R_ScreenShot_f, "Take a screenshot of current frame", NULL);
+	ri.Cmd_AddSystemCommand("screenshotJPEG", R_ScreenShot_f, "Take a JPEG screenshot of current frame", NULL);
 	ri.Cmd_AddSystemCommand("gfxinfo", GfxInfo_f, "Print GFX info of current system", NULL);
 	ri.Cmd_AddSystemCommand("taginfo", R_TagInfo_f, "Print the list of loaded tags", NULL);
 }
@@ -1194,6 +1201,8 @@ void R_Init(void)
 
 	InitOpenGL();
 
+	R_InitGamma();
+
 	R_InitImages();
 
 	R_InitShaders();
@@ -1203,8 +1212,6 @@ void R_Init(void)
 	R_ModelInit();
 
 	R_InitFreeType();
-
-	R_InitGamma();
 
 	err = glGetError();
 	if (err != GL_NO_ERROR)
@@ -1234,10 +1241,9 @@ void RE_Shutdown(qboolean destroyWindow)
 	ri.Cmd_RemoveSystemCommand("shaderlist");
 	ri.Cmd_RemoveSystemCommand("skinlist");
 	ri.Cmd_RemoveSystemCommand("modellist");
-	ri.Cmd_RemoveSystemCommand("modelist");
 	ri.Cmd_RemoveSystemCommand("screenshot");
+	ri.Cmd_RemoveSystemCommand("screenshotJPEG");
 	ri.Cmd_RemoveSystemCommand("gfxinfo");
-	ri.Cmd_RemoveSystemCommand("minimize");
 	ri.Cmd_RemoveSystemCommand("taginfo");
 
 	// keep a backup of the current images if possible

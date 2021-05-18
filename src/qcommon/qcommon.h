@@ -39,14 +39,6 @@
 
 #include "../qcommon/cm_public.h"
 
-// Ignore __attribute__ on non-gcc platforms
-#ifndef __GNUC__
-#   ifndef __attribute__
-#       define __attribute__(x)
-#   endif
-#endif
-
-
 // msg.c
 
 /**
@@ -335,6 +327,7 @@ typedef struct
 	char downloadTempName[MAX_OSPATH];          ///< in wwwdl mode, this is OS path (it's a qpath otherwise)
 	char originalDownloadName[MAX_QPATH];       ///< if we get a redirect, keep a copy of the original file path
 	qboolean downloadRestart;                   ///< if true, we need to do another FS_Restart because we downloaded a pak
+	qboolean systemDownload;                    ///< if true, we are running an system inited download and we do not force fs_game or isolation paths
 } download_t;
 
 // update and motd server info
@@ -396,8 +389,17 @@ You or the server may be running older versions of the game. Press the auto-upda
  */
 extern int demo_protocols[];
 
-#define MOTD_SERVER_NAME    "motd.etlegacy.com"    ///< location of the message of the day server
-#define UPDATE_SERVER_NAME  "update.etlegacy.com"  ///< location of the update server
+#define MASTER_SERVER_NAME  "master.etlegacy.com"                ///< location of the master server
+#define MOTD_SERVER_NAME    "motd.etlegacy.com"                  ///< location of the message of the day server
+#define UPDATE_SERVER_NAME  "update.etlegacy.com"                ///< location of the update server
+
+#ifdef FEATURE_SSL
+#define MIRROR_SERVER_URL "https://mirror.etlegacy.com" ///< location of the download server
+#else
+#define MIRROR_SERVER_URL "http://mirror.etlegacy.com"  ///< location of the download server
+#endif
+
+#define DOWNLOAD_SERVER_URL MIRROR_SERVER_URL "/etmain"
 
 #define PORT_MASTER         27950
 #define PORT_MOTD           27951
@@ -510,15 +512,8 @@ void VM_Free(vm_t *vm);
 void VM_Clear(void);
 vm_t *VM_Restart(vm_t *vm);
 
-/**
- * @def VM_CALL_END
- *
- * @brief This should be something like INT_MAX but that would need limits.h everywhere so meh and negative values should be somewhat safe
- */
-#define VM_CALL_END -1337
-
 intptr_t QDECL VM_CallFunc(vm_t *vm, int callNum, ...);
-#define VM_Call(vm, ...) VM_CallFunc(vm, __VA_ARGS__, VM_CALL_END)
+#define VM_Call(...) VM_CallFunc(__VA_ARGS__, VM_CALL_END)
 
 void VM_Debug(int level);
 
@@ -786,14 +781,6 @@ extern modHash modHashes;
  */
 #define MAX_FOUND_FILES 0x1000
 
-#ifdef _WIN32
-#include <direct.h>
-#define Q_rmdir _rmdir
-#else
-#include <unistd.h>
-#define Q_rmdir rmdir
-#endif
-
 qboolean FS_Initialized(void);
 
 void FS_InitFilesystem(void);
@@ -811,7 +798,7 @@ char **FS_ListFiles(const char *path, const char *extension, int *numfiles);
 void FS_FreeFileList(char **list);
 
 qboolean FS_FileExists(const char *file);
-qboolean FS_SV_FileExists(const char *file);
+qboolean FS_SV_FileExists(const char *file, qboolean checkBase);
 
 qboolean FS_IsSamePath(const char *s1, const char *s2);
 qboolean FS_CreatePath(const char *OSPath);
@@ -835,6 +822,7 @@ fileHandle_t FS_SV_FOpenFileWrite(const char *fileName);
 long FS_SV_FOpenFileRead(const char *fileName, fileHandle_t *fp);
 void FS_SV_Rename(const char *from, const char *to);
 long FS_FOpenFileRead(const char *fileName, fileHandle_t *file, qboolean uniqueFILE);
+long FS_FOpenFileReadFullDir(const char *fullFileName, fileHandle_t *file);
 
 /*
 if uniqueFILE is true, then a new FILE will be fopened even if the file
@@ -859,6 +847,8 @@ int FS_Delete(const char *fileName);
 int FS_Write(const void *buffer, int len, fileHandle_t h);
 
 int FS_OSStatFile(const char *ospath);
+
+long FS_FileAge(const char *ospath);
 
 int FS_Read(void *buffer, int len, fileHandle_t f);
 // properly handles partial reads and reads from other dlls
@@ -901,6 +891,7 @@ int FS_Seek(fileHandle_t f, long offset, int origin);
 // seek on a file
 
 qboolean FS_FilenameCompare(const char *s1, const char *s2);
+qboolean FS_IsDemoExt(const char *fileName, int namelen);
 
 const char *FS_LoadedPakNames(void);
 const char *FS_LoadedPakChecksums(void);
@@ -950,7 +941,7 @@ qboolean FS_Unzip(const char *fileName, qboolean quiet);
 
 void FS_HomeRemove(const char *homePath);
 
-qboolean FS_FileInPathExists(const char *testpath);
+qboolean FS_FileInPathExists(const char *ospath);
 int FS_CalculateFileSHA1(const char *path, char *hash);
 const char *FS_Dirpath(const char *path);
 const char *FS_Basename(const char *path);
@@ -1013,10 +1004,10 @@ void Info_Print(const char *s);
 
 void Com_BeginRedirect(char *buffer, size_t buffersize, void (*flush)(char *));
 void Com_EndRedirect(void);
-void QDECL Com_Printf(const char *fmt, ...) __attribute__ ((format(printf, 1, 2)));
-void QDECL Com_DPrintf(const char *fmt, ...) __attribute__ ((format(printf, 1, 2)));
-void QDECL Com_Error(int code, const char *fmt, ...) __attribute__ ((noreturn, format(printf, 2, 3)));
-void Com_Quit_f(void) __attribute__ ((noreturn));
+void QDECL Com_Printf(const char *fmt, ...) _attribute ((format(printf, 1, 2)));
+void QDECL Com_DPrintf(const char *fmt, ...) _attribute ((format(printf, 1, 2)));
+void QDECL Com_Error(int code, const char *fmt, ...) _attribute ((noreturn, format(printf, 2, 3)));
+void Com_Quit_f(void) _attribute ((noreturn));
 
 int Com_Milliseconds(void);     // will be journaled properly
 unsigned int Com_BlockChecksum(const void *buffer, size_t length);
@@ -1093,6 +1084,9 @@ extern int com_hunkusedvalue;
 
 extern qboolean com_errorEntered;
 
+extern cvar_t *com_masterServer;
+extern cvar_t *com_motdServer;
+extern cvar_t *com_updateServer;
 extern cvar_t *com_downloadURL;
 
 extern fileHandle_t com_journalFile;
@@ -1137,13 +1131,13 @@ temp file loading
 #define Z_TagMalloc(size, tag)          Z_TagMallocDebug(size, tag, # size, __FILE__, __LINE__)
 #define Z_Malloc(size)                  Z_MallocDebug(size, # size, __FILE__, __LINE__)
 #define S_Malloc(size)                  S_MallocDebug(size, # size, __FILE__, __LINE__)
-void *Z_TagMallocDebug(int size, int tag, char *label, char *file, int line);   // NOT 0 filled memory
-void *Z_MallocDebug(int size, char *label, char *file, int line);               // returns 0 filled memory
-void *S_MallocDebug(int size, char *label, char *file, int line);               // returns 0 filled memory
+void *Z_TagMallocDebug(size_t size, int tag, char *label, char *file, int line);   // NOT 0 filled memory
+void *Z_MallocDebug(size_t size, char *label, char *file, int line);               // returns 0 filled memory
+void *S_MallocDebug(size_t size, char *label, char *file, int line);               // returns 0 filled memory
 #else
-void *Z_TagMalloc(int size, int tag);   // NOT 0 filled memory
-void *Z_Malloc(int size);               // returns 0 filled memory
-void *S_Malloc(int size);               // NOT 0 filled memory only for small allocations
+void *Z_TagMalloc(size_t size, int tag);   // NOT 0 filled memory
+void *Z_Malloc(size_t size);               // returns 0 filled memory
+void *S_Malloc(size_t size);               // NOT 0 filled memory only for small allocations
 #endif
 void Z_Free(void *ptr);
 void Z_FreeTags(int tag);
@@ -1156,7 +1150,7 @@ qboolean Hunk_CheckMark(void);
 //void *Hunk_Alloc( int size );
 // void *Hunk_Alloc( int size, ha_pref preference );
 void Hunk_ClearTempMemory(void);
-void *Hunk_AllocateTempMemory(unsigned int size);
+void *Hunk_AllocateTempMemory(size_t size);
 void Hunk_FreeTempMemory(void *buf);
 int Hunk_MemoryRemaining(void);
 void Hunk_SmallLog(void);
@@ -1250,6 +1244,8 @@ void Com_UpdateVarsClean(int flags);
 void Com_Update_f(void);
 
 // download.c
+#define CA_CERT_FILE "cacert.pem"
+#define TMP_FILE_EXTENSION ".tmp"
 void Com_ClearDownload(void);
 void Com_ClearStaticDownload(void);
 
@@ -1258,6 +1254,10 @@ void Com_InitDownloads(void);
 void Com_WWWDownload(void);
 qboolean Com_WWWBadChecksum(const char *pakname);
 void Com_Download_f(void);
+
+#if defined(FEATURE_SSL)
+void Com_CheckCaCertStatus(void);
+#endif
 
 void Key_KeynameCompletion(void (*callback)(const char *s));
 // for keyname autocompletion
@@ -1355,6 +1355,8 @@ qboolean IN_IsNumLockDown(void);
 #define Sys_GetDLLName(x) x ".mp.nbsd." ARCH_STRING DLL_EXT
 #elif __APPLE__
 #define Sys_GetDLLName(x) x DLL_EXT
+#elif __ANDROID__
+#define Sys_GetDLLName(x) "lib" x ".mp.android." ARCH_STRING DLL_EXT
 #else
 #define Sys_GetDLLName(x) x ".mp." ARCH_STRING DLL_EXT
 #endif
@@ -1363,9 +1365,10 @@ qboolean Sys_DllExtension(const char *name);
 
 char *Sys_GetCurrentUser(void);
 
-void QDECL Sys_Error(const char *error, ...) __attribute__ ((noreturn, format(printf, 1, 2)));
-void Sys_Quit(void) __attribute__ ((noreturn));
+void QDECL Sys_Error(const char *error, ...) _attribute ((noreturn, format(printf, 1, 2)));
+void Sys_Quit(void) _attribute ((noreturn));
 char *IN_GetClipboardData(void);       // note that this isn't journaled...
+void IN_SetClipboardData(const char *text);
 
 void Sys_Print(const char *msg);
 
@@ -1394,6 +1397,32 @@ qboolean Sys_CheckCD(void);
 
 FILE *Sys_FOpen(const char *ospath, const char *mode);
 qboolean Sys_Mkdir(const char *path);
+
+#ifdef _WIN32
+int Sys_Remove(const char *path);
+int Sys_RemoveDir(const char *path);
+
+#define sys_stat_t struct _stat
+int Sys_Stat(const char *path, void *stat);
+#define Sys_S_IsDir(m) (m & _S_IFDIR)
+
+int Sys_Rename(const char *from, const char *to);
+char *Sys_RealPath(const char *path);
+#define Sys_PathAbsolute(name) (name && strlen(name) > 3 && name[1] == ':' && (name[2] == '\\' || name[2] == '/'))
+#else
+#include <unistd.h>
+#define Sys_Remove(x) remove(x)
+#define Sys_RemoveDir(x) rmdir(x)
+#define Sys_Rename(from, to) rename(from, to)
+#define Sys_PathAbsolute(name) (name && name[0] == '/')
+// realpath() returns NULL if there are issues with the file
+#define Sys_RealPath(path) realpath(path, NULL)
+
+#define sys_stat_t struct stat
+#define Sys_Stat(osPath, statBuf) stat(osPath, statBuf)
+#define Sys_S_IsDir(m) S_ISDIR(m)
+#endif
+
 char *Sys_Cwd(void);
 char *Sys_DefaultBasePath(void);
 char *Sys_DefaultInstallPath(void);

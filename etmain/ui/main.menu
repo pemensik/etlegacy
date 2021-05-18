@@ -94,7 +94,7 @@ menuDef {
 
 
 // Window //
-	//WINDOW( _("MENU"), 50 ) // FIXME: script error with WINDOW_HEIGHT
+	//WINDOW( _("WELCOME"), 50 )
 	SUBWINDOW( 0, 0, MENU_WIDTH, MENU_HEIGHT, _("WELCOME") )
 	execKey "c" { close main ; open main_quickconnect }
 
@@ -103,7 +103,9 @@ menuDef {
 
 // Buttons //
 	BUTTON( 6, 32, MENU_WIDTH-12, 18, _("PLAY"), .3, 14, close main ; /*close backgroundmusic ; open backgroundmusic_server ;*/ uiScript UpdateFilter ; uiScript ServerSort 2 ; open playonline )
+#ifndef ANDROID
 	BUTTON( 6, 56, MENU_WIDTH-12, 18, _("HOST"), .3, 14, close main ; /*close backgroundmusic ; open backgroundmusic_server ;*/ uiScript loadArenas ; uiScript initHostGameFeatures ; open hostgame )
+#endif
 	BUTTON( 6, 80, MENU_WIDTH-12, 18, _("REPLAYS"), .3, 14, close main ; open viewreplay )
 	BUTTON( 6, 104, MENU_WIDTH-12, 18, _("OPTIONS"), .3, 14, close main ; open options )
 	BUTTON( 6, 128, MENU_WIDTH-12, 18, _("PROFILE"), .3, 14, close main ; open profile )
@@ -121,7 +123,7 @@ menuDef {
 #endif
 
 // Version //
-LABEL( 2, 450, 114, 10, "^1"ETLEGACY_VERSION, .2, ITEM_ALIGN_LEFT, 0, 8 )
+LABEL( 2, 450, 132, 10, "^1"ETLEGACY_VERSION, .2, ITEM_ALIGN_LEFT, 0, 8 )
 
 // message of the day?
 //	SUBWINDOW( MENU_WIDTH+6, 0, __WINDOW_WIDTH-MENU_WIDTH-6-32, 28, _("MESSAGE OF THE DAY") )

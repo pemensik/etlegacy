@@ -763,7 +763,8 @@ void TeamplayInfoMessage(team_t team)
 	for (i = 0; i < level.numConnectedClients; i++)
 	{
 		player = g_entities + level.sortedClients[i];
-		if (player->inuse && player->client->sess.sessionTeam == team && !(player->r.svFlags & SVF_BOT) && player->client->pers.connected == CON_CONNECTED)
+
+		if (player->inuse && (player->client->sess.sessionTeam == team || player->client->sess.shoutcaster) && !(player->r.svFlags & SVF_BOT) && player->client->pers.connected == CON_CONNECTED)
 		{
 			trap_SendServerCommand(player - g_entities, tinfo);
 		}
@@ -1254,6 +1255,12 @@ void checkpoint_spawntouch(gentity_t *self, gentity_t *other, trace_t *trace)
 #ifdef FEATURE_OMNIBOT
 	char *flagAction = "touch";
 #endif
+
+	// dead guys don't capture spawns
+	if (other->client->ps.eFlags & EF_DEAD)
+	{
+		return;
+	}
 
 	if (self->count == other->client->sess.sessionTeam)
 	{

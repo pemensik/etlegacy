@@ -32,8 +32,15 @@
  * @file sys_main.c
  */
 
+#ifdef LEGACY_DUMP_MEMLEAKS
+#define _CRTDBG_MAP_ALLOC
+#endif
+
 #include <signal.h>
 #include <stdlib.h>
+#if defined(LEGACY_DUMP_MEMLEAKS)
+#include <crtdbg.h>
+#endif
 #include <limits.h>
 #include <sys/types.h>
 #include <stdarg.h>
@@ -175,7 +182,7 @@ qboolean Sys_WritePIDFile(void)
  * @brief Single exit point (regular exit or in case of error)
  * @param[in] exitCode
  */
-static __attribute__ ((noreturn)) void Sys_Exit(int exitCode)
+static _attribute((noreturn)) void Sys_Exit(int exitCode)
 {
 	CON_Shutdown();
 
@@ -196,7 +203,7 @@ static __attribute__ ((noreturn)) void Sys_Exit(int exitCode)
 			if (FS_FileExists(Cvar_VariableString("com_pidfile")))
 			{
 				// FIXME: delete even when outside of homepath
-				if (remove(va("%s%c%s%c%s", Cvar_VariableString("fs_homepath"),
+				if (Sys_Remove(va("%s%c%s%c%s", Cvar_VariableString("fs_homepath"),
 				              PATH_SEP, Cvar_VariableString("fs_game"),
 				              PATH_SEP, Cvar_VariableString("com_pidfile"))) != 0)
 				{
@@ -227,7 +234,7 @@ static __attribute__ ((noreturn)) void Sys_Exit(int exitCode)
 
 	NET_Shutdown();
 
-	exit(exitCode);
+	Sys_PlatformExit(exitCode);
 }
 
 
@@ -266,7 +273,7 @@ void Sys_Init(void)
  */
 void Sys_AnsiColorPrint(const char *msg)
 {
-	static char buffer[MAXPRINTMSG];
+	static char buffer[MAX_PRINT_MSG];
 	int         i, j, _found, length = 0;
 
 	// colors hash from http://wolfwiki.anime.net/index.php/Color_Codes
@@ -383,7 +390,7 @@ void Sys_AnsiColorPrint(const char *msg)
 		}
 		else
 		{
-			if (length >= MAXPRINTMSG - 1)
+			if (length >= MAX_PRINT_MSG - 1)
 			{
 				break;
 			}
@@ -660,7 +667,11 @@ static void *Sys_TryLibraryLoad(const char *base, const char *gamedir, const cha
 	fn = FS_BuildOSPath(base, gamedir, fname);
 	Com_Printf("Sys_LoadDll(%s)... ", fn);
 
+#ifndef __ANDROID__
 	libHandle = Sys_LoadLibrary(fn);
+#else
+	libHandle = Sys_LoadLibrary(fname);
+#endif
 
 	if (!libHandle)
 	{
@@ -778,7 +789,7 @@ void *Sys_LoadGameDll(const char *name, qboolean extract,
 		}
 
 		// use League ui for download process (mod binary pk3 isn't extracted)
-		if (!strcmp(name, "ui") && !libHandle && strcmp(gamedir, DEFAULT_MODGAME))
+		if (!strcmp(name, "ui") && !libHandle && strcmp(gamedir, DEFAULT_MODGAME) != 0)
 		{
 			Com_Printf("Sys_LoadDll: mod initialisation - ui fallback\n");
 
@@ -858,6 +869,12 @@ void Sys_BuildCommandLine(int argc, char **argv, char *buffer, size_t bufferSize
 		if (!Q_strncmp(argv[i], "et://", 5) && Q_strncmp(argv[i - 1], "+connect", 8))
 		{
 			Q_strcat(buffer, bufferSize, "+connect ");
+		}
+
+		// Allow demo files to be passed without +demo for playback
+		if (FS_IsDemoExt(argv[i], -1) && Q_strncmp(argv[i - 1], "+demo", 5) && Q_strncmp(argv[i - 1], "+record", 7))
+		{
+			Q_strcat(buffer, bufferSize, "+demo dirty ");
 		}
 
 		if (containsSpaces)
@@ -1001,7 +1018,8 @@ int main(int argc, char **argv)
 	Sys_ParseArgs(argc, argv);
 
 #if defined(__APPLE__) && !defined(DEDICATED)
-	// argv[0] would be /Users/seth/etlegacy/etl.app/Contents/MacOS
+	SDL_EventState(SDL_DROPFILE, SDL_ENABLE);
+	// argv[0] would be /Users/seth/etlegacy/ET Legacy.app/Contents/MacOS
 	// But on OS X we want to pretend the binary path is the .app's parent
 	// So that way the base folder is right next to the .app allowing
 	{
@@ -1009,7 +1027,7 @@ int main(int argc, char **argv)
 		CFURLRef url               = CFBundleCopyBundleURL(CFBundleGetMainBundle());
 		int      quarantine_status = 0;
 
-		quarantine_status = needsOSXQuarantineFix();
+		quarantine_status = OSX_NeedsQuarantineFix();
 		if (quarantine_status == 1)
 		{
 			//app restarts itself under the right path
@@ -1052,11 +1070,15 @@ int main(int argc, char **argv)
 
 	// Concatenate the command line for passing to Com_Init
 	Sys_BuildCommandLine(argc, argv, commandLine, sizeof(commandLine));
+	Sys_SetUpConsoleAndSignals();
 
 	Com_Init(commandLine);
-	NET_Init();
 
-	Sys_SetUpConsoleAndSignals();
+	//FIXME: Lets not enable this yet for normal use
+#if !defined(DEDICATED) && defined(FEATURE_SSL) && defined(ETLEGACY_DEBUG)
+	// Check for certificates
+	Com_CheckCaCertStatus();
+#endif
 
 #ifdef _WIN32
 
@@ -1067,11 +1089,7 @@ int main(int argc, char **argv)
 	}
 #endif
 
-	{
-		char cwd[MAX_OSPATH];
-		_getcwd(cwd, sizeof(cwd));
-		Com_Printf("Working directory: %s\n", cwd);
-	}
+	Com_Printf("Working directory: %s\n", Sys_Cwd());
 
 	// hide the early console since we've reached the point where we
 	// have a working graphics subsystems

@@ -838,8 +838,7 @@ done:
 	{
 		if (textureFilterAnisotropic)
 		{
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT,
-							 (GLint)Com_Clamp(1, maxAnisotropy, r_extMaxAnisotropy->integer));
+			glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, Com_Clamp(1.f, maxAnisotropy, r_extTextureFilterAnisotropic->value));
 		}
 
 		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, gl_filter_min);
@@ -1418,7 +1417,7 @@ void R_SetColorMappings(void)
 		s_intensitytable[i] = j;
 	}
 
-	if (glConfig.deviceSupportsGamma && !GLEW_ARB_fragment_program)
+	if (glConfig.deviceSupportsGamma && !tr.gammaProgramUsed)
 	{
 		ri.GLimp_SetGamma(s_gammatable, s_gammatable, s_gammatable);
 	}
@@ -1467,6 +1466,8 @@ void R_DeleteTextures(void)
 	{
 		glBindTexture(GL_TEXTURE_2D, 0);
 	}
+
+	R_CacheImageFreeAll();
 }
 
 /*
@@ -1958,13 +1959,22 @@ void R_CacheImageFreeAll()
 {
 	if (r_cache->integer && r_cacheShaders->integer)
 	{
-		int i = 0;
-
+		int i;
 		for (i = 0; i < FILE_HASH_SIZE; i++)
 		{
 			if (backupHashTable[i])
 			{
 				R_CacheImageFree(backupHashTable[i]);
+				backupHashTable[i] = NULL;
+			}
+		}
+
+		for (i = 0; i < FILE_HASH_SIZE; i++)
+		{
+			if (hashTable[i])
+			{
+				R_CacheImageFree(hashTable[i]);
+				hashTable[i] = NULL;
 			}
 		}
 	}
@@ -2247,7 +2257,7 @@ void R_LoadCacheImages(void)
 		for (i = 0; i < 4; i++)
 		{
 			token    = COM_ParseExt(&pString, qfalse);
-			parms[i] = atoi(token);
+			parms[i] = Q_atoi(token);
 		}
 		R_FindImageFile(name, parms[0], parms[1], parms[2], parms[3]);
 	}

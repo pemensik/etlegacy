@@ -1298,6 +1298,7 @@ typedef struct level_locals_s
 	mapVoteInfo_t mapvoteinfo[MAX_VOTE_MAPS];
 	int mapVoteNumMaps;
 	int mapsSinceLastXPReset;
+	qboolean mapVotePlayersCount;
 
 	// sv_cvars
 	svCvar_t svCvars[MAX_SVCVARS];
@@ -1481,6 +1482,24 @@ team_t G_GetTeamFromEntity(gentity_t *ent);
 const char *G_StringContains(const char *str1, const char *str2, int casesensitive);
 qboolean G_MatchString(const char *filter, const char *name, int casesensitive);
 
+qboolean CG_ParseMapVotePlayersCountConfig(void);
+
+/**
+ * @struct mapVotePlayersCount_s
+ * @typedef mapVotePlayersCount_t
+ * @brief
+ */
+typedef struct mapVotePlayersCount_s
+{
+	char map[MAX_QPATH];
+	int min;
+	int max;
+
+} mapVotePlayersCount_t;
+
+#define MAX_MAPVOTEPLAYERCOUNT 256
+extern mapVotePlayersCount_t mapVotePlayersCount[MAX_MAPVOTEPLAYERCOUNT];
+
 /**
  * @struct grefEntity_t
  * @brief cut down refEntity_t w/ only stuff needed for player bone calculation
@@ -1645,7 +1664,7 @@ void Svcmd_ShuffleTeamsSR_f(qboolean restart);
 void FireWeapon(gentity_t *ent);
 void G_BurnMeGood(gentity_t *self, gentity_t *body, gentity_t *chunk);
 
-void MoveClientToIntermission(gentity_t *ent);
+void MoveClientToIntermission(gentity_t *ent, qboolean hasVoted);
 void G_SendScore(gentity_t *ent);
 
 // g_cmds.c
@@ -1669,7 +1688,7 @@ void G_LogExit(const char *string);
 void SendScoreboardMessageToAllClients(void);
 void QDECL G_Printf(const char *fmt, ...) _attribute((format(printf, 1, 2)));
 void QDECL G_DPrintf(const char *fmt, ...) _attribute((format(printf, 1, 2)));
-void QDECL G_Error(const char *fmt, ...) __attribute__ ((noreturn, format(printf, 1, 2)));
+void QDECL G_Error(const char *fmt, ...) _attribute ((noreturn, format(printf, 1, 2)));
 
 // g_client.c
 char *ClientConnect(int clientNum, qboolean firstTime, qboolean isBot);
@@ -2101,6 +2120,17 @@ extern vmCvar_t g_multiview;
 extern vmCvar_t g_stickyCharge;
 extern vmCvar_t g_xpSaver;
 
+#define DYNAMITECHAINING_EXPLOSION 0 // default, explode dynamites chaining
+#define DYNAMITECHAINING_FREE 1      // free dynamites chaining
+extern vmCvar_t g_dynamiteChaining;
+
+extern vmCvar_t g_playerHitBoxHeight;
+
+extern vmCvar_t g_debugForSingleClient;
+
+#define G_InactivityValue (g_inactivity.integer ? g_inactivity.integer : 60)
+#define G_SpectatorInactivityValue (g_spectatorInactivity.integer ? g_spectatorInactivity.integer : 60)
+
 /**
  * @struct GeoIPTag
  * @typedef GeoIP
@@ -2121,7 +2151,7 @@ void GeoIP_close(void);
 extern GeoIP *gidb;
 
 void trap_Printf(const char *fmt);
-void trap_Error(const char *fmt) __attribute__((noreturn));
+void trap_Error(const char *fmt) _attribute((noreturn));
 int trap_Milliseconds(void);
 int trap_Argc(void);
 void trap_Argv(int n, char *buffer, int bufferLength);
@@ -2622,6 +2652,7 @@ void weapon_smokeBombExplode(gentity_t *ent);
 
 void DynaSink(gentity_t *self);
 void DynaFree(gentity_t *self);
+void G_ChainFree(gentity_t *self);
 
 void G_MakeReady(gentity_t *ent);
 void G_MakeUnready(gentity_t *ent);
@@ -2793,7 +2824,7 @@ void G_RailBox(vec_t *origin, vec_t *mins, vec_t *maxs, vec_t *color, int index)
 typedef struct weapFireTable_t
 {
 	weapon_t weapon;
-	gentity_t * (*fire)(gentity_t * ent); ///< -
+	gentity_t *(*fire)(gentity_t * ent);  ///< -
 	void (*think)(gentity_t *ent);        ///< -
 	void (*free)(gentity_t *ent);         ///< -
 	int eType;                            ///< -

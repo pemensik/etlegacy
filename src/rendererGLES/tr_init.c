@@ -37,7 +37,7 @@
 
 glconfig_t glConfig;
 qboolean   textureFilterAnisotropic = qfalse;
-int        maxAnisotropy            = 0;
+float        maxAnisotropy            = 0.0f;
 
 glstate_t glState;
 
@@ -101,7 +101,6 @@ cvar_t *r_extMaxAnisotropy;
 cvar_t *r_ignoreGLErrors;
 cvar_t *r_logFile;
 
-cvar_t *r_primitives;
 cvar_t *r_textureBits;
 
 cvar_t *r_drawBuffer;
@@ -790,6 +789,12 @@ void R_ScreenShot_f(void)
 
 	ssFormat_t format = r_screenshotFormat->integer;
 
+	// Backwards compatibility
+	if (!Q_stricmp(ri.Cmd_Argv(0), "screenshotJPEG"))
+	{
+		format = SSF_JPEG;
+	}
+
 	switch (format)
 	{
 		case SSF_TGA:
@@ -1042,11 +1047,6 @@ void R_Register(void)
 	r_railWidth         = ri.Cvar_Get("r_railWidth", "16", CVAR_ARCHIVE);
 	r_railSegmentLength = ri.Cvar_Get("r_railSegmentLength", "32", CVAR_ARCHIVE);
 
-	r_primitives = ri.Cvar_Get("r_primitives", "0", CVAR_ARCHIVE);
-	// Added this due to invalid values actually causing no drawing
-	// r_primitives == 2 fixes some issues on ATI cards
-	ri.Cvar_CheckRange(r_primitives, 0, 3, qtrue);
-
 	r_ambientScale  = ri.Cvar_Get("r_ambientScale", "0.5", CVAR_CHEAT);
 	r_directedScale = ri.Cvar_Get("r_directedScale", "1", CVAR_CHEAT);
 
@@ -1128,6 +1128,7 @@ void R_Register(void)
 	ri.Cmd_AddSystemCommand("skinlist", R_SkinList_f, "Print out the list of skins", NULL);
 	ri.Cmd_AddSystemCommand("modellist", R_Modellist_f, "Print out the list of loaded models", NULL);
 	ri.Cmd_AddSystemCommand("screenshot", R_ScreenShot_f, "Take a screenshot of current frame", NULL);
+	ri.Cmd_AddSystemCommand("screenshotJPEG", R_ScreenShot_f, "Take a JPEG screenshot of current frame", NULL);
 	ri.Cmd_AddSystemCommand("gfxinfo", GfxInfo_f, "Print GFX info of current system", NULL);
 	ri.Cmd_AddSystemCommand("taginfo", R_TagInfo_f, "Print the list of loaded tags", NULL);
 }
@@ -1234,10 +1235,9 @@ void RE_Shutdown(qboolean destroyWindow)
 	ri.Cmd_RemoveSystemCommand("shaderlist");
 	ri.Cmd_RemoveSystemCommand("skinlist");
 	ri.Cmd_RemoveSystemCommand("modellist");
-	ri.Cmd_RemoveSystemCommand("modelist");
 	ri.Cmd_RemoveSystemCommand("screenshot");
+	ri.Cmd_RemoveSystemCommand("screenshotJPEG");
 	ri.Cmd_RemoveSystemCommand("gfxinfo");
-	ri.Cmd_RemoveSystemCommand("minimize");
 	ri.Cmd_RemoveSystemCommand("taginfo");
 
 	// keep a backup of the current images if possible

@@ -117,6 +117,8 @@ cvar_t *sv_demoTolerant;
 
 cvar_t *sv_ipMaxClients;
 
+cvar_t *sv_guidCheck;
+
 static void SVC_Status(netadr_t from, qboolean force);
 
 /*
@@ -244,7 +246,7 @@ void QDECL SV_SendServerCommand(client_t *cl, const char *fmt, ...)
 	}
 
 	// save broadcasts to demo
-	// note: in the case a command is only issued to a specific client, it is NOT recorded (see above when cl != NULL). 
+	// note: in the case a command is only issued to a specific client, it is NOT recorded (see above when cl != NULL).
 	// If you want to record them, just place this code above, but be warned that it may be dangerous (such as "disconnect" command)
 	// because server commands will be replayed to every connected clients!
 	//
@@ -839,7 +841,7 @@ static void SVC_Status(netadr_t from, qboolean force)
  */
 void SVC_Info(netadr_t from)
 {
-	int  i, players = 0, humans = 0;
+	int  i, clients = 0, humans = 0;
 	char *gamedir;
 	char infostring[MAX_INFO_STRING];
 	char *antilag;
@@ -874,12 +876,12 @@ void SVC_Info(netadr_t from)
 		return;
 	}
 
-	// don't count privateclients
-	for (i = sv_privateClients->integer ; i < sv_maxclients->integer ; i++)
+	// count private clients too
+	for (i = 0 ; i < sv_maxclients->integer ; i++)
 	{
 		if (svs.clients[i].state >= CS_CONNECTED)
 		{
-			players++;
+			clients++;
 			if (svs.clients[i].netchan.remoteAddress.type != NA_BOT)
 			{
 				humans++;
@@ -898,9 +900,10 @@ void SVC_Info(netadr_t from)
 	Info_SetValueForKey(infostring, "hostname", sv_hostname->string);
 	Info_SetValueForKey(infostring, "serverload", va("%i", svs.serverLoad));
 	Info_SetValueForKey(infostring, "mapname", sv_mapname->string);
-	Info_SetValueForKey(infostring, "clients", va("%i", players));
+	Info_SetValueForKey(infostring, "clients", va("%i", clients));
 	Info_SetValueForKey(infostring, "humans", va("%i", humans));
 	Info_SetValueForKey(infostring, "sv_maxclients", va("%i", sv_maxclients->integer - sv_privateClients->integer - sv_democlients->integer));
+	Info_SetValueForKey(infostring, "sv_privateclients", va("%i", sv_privateClients->integer));
 	Info_SetValueForKey(infostring, "gametype", va("%i", sv_gametype->integer));
 	Info_SetValueForKey(infostring, "pure", va("%i", sv_pure->integer));
 
@@ -1089,7 +1092,7 @@ static void SVC_RemoteCommand(netadr_t from, msg_t *msg)
 	// if we send an OOB print message this size, 1.31 clients die in a Com_Printf buffer overflow
 	// the buffer overflow will be fixed in > 1.31 clients
 	// but we want a server side fix
-	// we must NEVER send an OOB message that will be > 1.31 MAXPRINTMSG (4096)
+	// we must NEVER send an OOB message that will be > 1.31 MAX_PRINT_MSG (4096)
 #define SV_OUTPUTBUF_LENGTH (256 - 16)
 	char sv_outputbuf[SV_OUTPUTBUF_LENGTH];
 	char *cmd_aux;
@@ -1706,7 +1709,7 @@ void SV_Frame(int msec)
 		}
 		else if (sv.demoState == DS_PLAYBACK) // Play the next demo frame
 		{
-			Com_DPrintf("Playing back demo frame");
+			Com_DPrintf("Playing back demo frame\n");
 			SV_DemoReadFrame();
 		}
 	}

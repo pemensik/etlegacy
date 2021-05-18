@@ -1650,18 +1650,146 @@ void CG_CheckForCursorHints(void)
 }
 
 /**
+ * @brief Draw the crosshaire health bar
+ * @param[in] position
+ * @param[in] health
+ * @param[in] maxHealth
+ */
+static void CG_DrawCrosshairHealthBar(float position, int health, int maxHealth)
+{
+	float  *color;
+	vec4_t bgcolor, c;
+	float  barFrac = (float)health / maxHealth;
+
+	// draw the name of the player being looked at
+	color = CG_FadeColor(cg.crosshairClientTime, 1000);
+
+	if (!color)
+	{
+		trap_R_SetColor(NULL);
+		return;
+	}
+
+	if (barFrac > 1.0f)
+	{
+		barFrac = 1.0;
+	}
+	else if (barFrac < 0)
+	{
+		barFrac = 0;
+	}
+
+	c[0] = 1.0f;
+	c[1] = c[2] = barFrac;
+	c[3] = (0.25f + barFrac * 0.5f) * color[3];
+
+	Vector4Set(bgcolor, 1.f, 1.f, 1.f, .25f * color[3]);
+
+	// - 110/2
+	CG_FilledBar(position - 55, 190, 110, 10, c, NULL, bgcolor, barFrac, 16);
+}
+
+/**
+ * @brief CG_DrawCrosshairPlayerInfo
+ * @param[in] clientNum
+ * @param[in] class
+ */
+static void CG_DrawCrosshairPlayerInfo(int clientNum, int class)
+{
+	float      *color;
+	float      w;
+	const char *s;
+	int        playerHealth = 0;
+	int        maxHealth    = 1;
+	qboolean   hasRank      = qfalse;
+	float      middle       = 320 + cgs.wideXoffset;
+	float      fontScale    = cg_fontScaleCN.value;
+
+	// draw the name of the player being looked at
+	color = CG_FadeColor(cg.crosshairClientTime, 1000);
+
+	if (!color)
+	{
+		trap_R_SetColor(NULL);
+		return;
+	}
+
+	// draw the name and class
+	if (cg_drawCrosshairNames.integer > 0)
+	{
+		char   colorized[32]         = { 0 };
+		size_t colorizedBufferLength = 32;
+
+		if (cg_drawCrosshairNames.integer == 2)
+		{
+			// Draw them with full colors
+			s = va("%s", cgs.clientinfo[clientNum].name);
+		}
+		else
+		{
+			// Draw them with a single color (white)
+			Q_ColorizeString('7', cgs.clientinfo[clientNum].cleanname, colorized, colorizedBufferLength);
+			s = colorized;
+		}
+		w = CG_Text_Width_Ext(s, fontScale, 0, &cgs.media.limboFont2);
+
+		CG_Text_Paint_Ext(middle - w / 2, 182, fontScale, fontScale, color, s, 0, 0, 0, &cgs.media.limboFont2);
+	}
+	if (cg_drawCrosshairInfo.integer & CROSSHAIR_CLASS)
+	{
+		// - 16 - 110/2
+		CG_DrawPic(middle - 71, 187, 16, 16, cgs.media.skillPics[SkillNumForClass(class)]);
+	}
+	if (cgs.clientinfo[clientNum].rank > 0 && (cg_drawCrosshairInfo.integer & CROSSHAIR_RANK))
+	{
+		//  + 110/2
+		CG_DrawPic(middle + 55, 187, 16, 16, rankicons[cgs.clientinfo[clientNum].rank][cgs.clientinfo[clientNum].team == TEAM_AXIS ? 1 : 0][0].shader);
+	}
+#ifdef FEATURE_PRESTIGE
+	if (cgs.prestige && cgs.clientinfo[clientNum].prestige > 0 && (cg_drawCrosshairInfo.integer & CROSSHAIR_PRESTIGE))
+	{
+		hasRank = (cg_drawCrosshairInfo.integer & CROSSHAIR_RANK) && cgs.clientinfo[clientNum].rank > 0;
+		// + 110/2
+		CG_DrawPic(middle + 55 + (hasRank ? 18 : 0), 187, 16, 16, cgs.media.prestigePics[0]);
+		CG_Text_Paint_Ext(middle + 71 + (hasRank ? 18 : 0), 198, fontScale, fontScale, color, va("%d", cgs.clientinfo[clientNum].prestige), 0, 0, 0, &cgs.media.limboFont2);
+	}
+#endif
+
+	// set the health
+	if (cg.crosshairClientNum == cg.snap->ps.identifyClient)
+	{
+		playerHealth = cg.snap->ps.identifyClientHealth;
+
+		// identifyClientHealth is sent as unsigned char and negative numbers are not transmitted - see SpectatorThink()
+		// this results in player health values behind max health
+		// adjust dead player health bogus values for the health bar
+		if (playerHealth > 156)
+		{
+			playerHealth = 0;
+		}
+	}
+	else
+	{
+		// only team mate health is transmit in clientinfo, this cause a slight refresh delay for disguised ennemy
+		// until they are identified through crosshair check on game side, which is connection depend
+		playerHealth = cgs.clientinfo[cg.crosshairClientNum].health;
+	}
+
+	maxHealth = CG_GetPlayerMaxHealth(clientNum, class, cgs.clientinfo[clientNum].team);
+
+	CG_DrawCrosshairHealthBar(middle, playerHealth, maxHealth);
+
+	trap_R_SetColor(NULL);
+}
+
+/**
  * @brief CG_DrawCrosshairNames
  */
 static void CG_DrawCrosshairNames(void)
 {
 	float      *color;
 	float      w;
-	const char *s;
-	int        playerHealth = 0;
-	qboolean   drawStuff    = qfalse;
-	qboolean   isTank       = qfalse;
-	qboolean   hasRank      = qfalse;
-	int        maxHealth    = 1;
+	const char *s = NULL;
 	float      dist; // Distance to the entity under the crosshair
 	float      zChange;
 	qboolean   hitClient = qfalse;
@@ -1677,8 +1805,15 @@ static void CG_DrawCrosshairNames(void)
 	if (cg.crosshairDyna > -1)
 	{
 		color = CG_FadeColor(cg.crosshairDynaTime, 1000);
-		s     = va(CG_TranslateString("%s^7\'s dynamite"), cgs.clientinfo[cg.crosshairDyna].name);
-		w     = CG_Text_Width_Ext(s, fontScale, 0, &cgs.media.limboFont2);
+
+		if (!color)
+		{
+			trap_R_SetColor(NULL);
+			return;
+		}
+
+		s = va(CG_TranslateString("%s^7\'s dynamite"), cgs.clientinfo[cg.crosshairDyna].name);
+		w = CG_Text_Width_Ext(s, fontScale, 0, &cgs.media.limboFont2);
 		CG_Text_Paint_Ext(middle - w / 2, 182, fontScale, fontScale, color, s, 0, 0, 0, &cgs.media.limboFont2);
 
 		cg.crosshairDyna = -1;
@@ -1689,8 +1824,15 @@ static void CG_DrawCrosshairNames(void)
 	if (cg.crosshairMine > -1)
 	{
 		color = CG_FadeColor(cg.crosshairMineTime, 1000);
-		s     = va(CG_TranslateString("%s^7\'s mine"), cgs.clientinfo[cg.crosshairMine].name);
-		w     = CG_Text_Width_Ext(s, fontScale, 0, &cgs.media.limboFont2);
+
+		if (!color)
+		{
+			trap_R_SetColor(NULL);
+			return;
+		}
+
+		s = va(CG_TranslateString("%s^7\'s mine"), cgs.clientinfo[cg.crosshairMine].name);
+		w = CG_Text_Width_Ext(s, fontScale, 0, &cgs.media.limboFont2);
 		CG_Text_Paint_Ext(middle - w / 2, 182, fontScale, fontScale, color, s, 0, 0, 0, &cgs.media.limboFont2);
 
 		cg.crosshairMine = -1;
@@ -1719,15 +1861,6 @@ static void CG_DrawCrosshairNames(void)
 		return;
 	}
 
-	// draw the name of the player being looked at
-	color = CG_FadeColor(cg.crosshairClientTime, 1000);
-
-	if (!color)
-	{
-		trap_R_SetColor(NULL);
-		return;
-	}
-
 	if (cg.crosshairClientNum >= MAX_CLIENTS)
 	{
 		if (!cg_drawCrosshairNames.integer && !cg_drawCrosshairInfo.integer)
@@ -1735,298 +1868,89 @@ static void CG_DrawCrosshairNames(void)
 			return;
 		}
 
+		// draw the name of the player being looked at
+		color = CG_FadeColor(cg.crosshairClientTime, 1000);
+
+		if (!color)
+		{
+			trap_R_SetColor(NULL);
+			return;
+		}
+
 		if (cgs.clientinfo[cg.snap->ps.clientNum].team != TEAM_SPECTATOR || cgs.clientinfo[cg.clientNum].shoutcaster)
 		{
 			if (cg_entities[cg.crosshairClientNum].currentState.eType == ET_MOVER && cg_entities[cg.crosshairClientNum].currentState.effect1Time)
 			{
-				isTank = qtrue;
-
-				playerHealth = cg_entities[cg.crosshairClientNum].currentState.dl_intensity;
-				maxHealth    = 255;
-
 				if (cg_drawCrosshairNames.integer > 0)
 				{
 					s = Info_ValueForKey(CG_ConfigString(CS_SCRIPT_MOVER_NAMES), va("%i", cg.crosshairClientNum));
-					if (!*s)
-					{
-						return;
-					}
-
-					w = CG_Text_Width_Ext(s, fontScale, 0, &cgs.media.limboFont2);
-					CG_Text_Paint_Ext(middle - w / 2, 182, fontScale, fontScale, color, s, 0, 0, 0, &cgs.media.limboFont2);
 				}
+
+				CG_DrawCrosshairHealthBar(middle, cg_entities[cg.crosshairClientNum].currentState.dl_intensity, 255);
 			}
 			else if (cg_entities[cg.crosshairClientNum].currentState.eType == ET_CONSTRUCTIBLE_MARKER)
 			{
 				if (cg_drawCrosshairNames.integer > 0)
 				{
 					s = Info_ValueForKey(CG_ConfigString(CS_CONSTRUCTION_NAMES), va("%i", cg.crosshairClientNum));
-					if (*s)
-					{
-						w = CG_Text_Width_Ext(s, fontScale, 0, &cgs.media.limboFont2);
-						CG_Text_Paint_Ext(middle - w / 2, 182, fontScale, fontScale, color, s, 0, 0, 0, &cgs.media.limboFont2);
-					}
 				}
-				return;
 			}
-		}
 
-		if (!isTank)
-		{
-			return;
-		}
-	}
-	else if (cgs.clientinfo[cg.crosshairClientNum].team != cgs.clientinfo[cg.snap->ps.clientNum].team)
-	{
-		if ((cg_entities[cg.crosshairClientNum].currentState.powerups & (1 << PW_OPS_DISGUISED)) && cgs.clientinfo[cg.snap->ps.clientNum].team != TEAM_SPECTATOR)
-		{
-			if (cgs.clientinfo[cg.snap->ps.clientNum].skill[SK_SIGNALS] >= 4 && cgs.clientinfo[cg.snap->ps.clientNum].cls == PC_FIELDOPS)
+			if (s && *s)
 			{
-				s = CG_TranslateString("Disguised Enemy!");
 				w = CG_Text_Width_Ext(s, fontScale, 0, &cgs.media.limboFont2);
 				CG_Text_Paint_Ext(middle - w / 2, 182, fontScale, fontScale, color, s, 0, 0, 0, &cgs.media.limboFont2);
-				return;
 			}
-			else if (dist > 0) // changed from 512 to grant covert ops more power
-			{
-				if (!cg_drawCrosshairNames.integer && !cg_drawCrosshairInfo.integer)
-				{
-					return;
-				}
-
-				drawStuff = qtrue;
-
-				// draw the name and class
-				if (cg_drawCrosshairNames.integer > 0)
-				{
-					if (cg_drawCrosshairNames.integer == 2)
-					{
-						// Draw with full coloring
-						// fail safe - this should always be the case here - cg.crosshairClientNum is in game and disguised ...
-						if (cgs.clientinfo[cg.crosshairClientNum].disguiseClientNum > -1)
-						{
-							s = va("%s", cgs.clientinfo[cgs.clientinfo[cg.crosshairClientNum].disguiseClientNum].name);
-							w = CG_Text_Width_Ext(s, fontScale, 0, &cgs.media.limboFont2);
-							CG_Text_Paint_Ext(middle - w / 2, 182, fontScale, fontScale, color, s, 0, 0, 0, &cgs.media.limboFont2);
-						}
-					}
-					else
-					{
-						// Draw them with a single color (white) // FIXME: name already clean
-						// fail safe - this should always be the case here - cg.crosshairClientNum is in game and disguised ...
-						if (cgs.clientinfo[cg.crosshairClientNum].disguiseClientNum > -1)
-						{
-							size_t colorizedBufferLength = 32;
-							char   colorized[32]         = { 0 };
-
-							Q_ColorizeString('7', cgs.clientinfo[cgs.clientinfo[cg.crosshairClientNum].disguiseClientNum].cleanname, colorized, colorizedBufferLength);
-
-							s = colorized;
-							w = CG_Text_Width_Ext(s, fontScale, 0, &cgs.media.limboFont2);
-							CG_Text_Paint_Ext(middle - w / 2, 182, fontScale, fontScale, color, s, 0, 0, 0, &cgs.media.limboFont2);
-						}
-					}
-				}
-				if (cg_drawCrosshairInfo.integer & CROSSHAIR_CLASS)
-				{
-					// - 16 - 110/2
-					CG_DrawPic(middle - 71, 187, 16, 16, cgs.media.skillPics[SkillNumForClass((cg_entities[cg.crosshairClientNum].currentState.powerups >> PW_OPS_CLASS_1) & 7)]);
-				}
-				if (cgs.clientinfo[cgs.clientinfo[cg.crosshairClientNum].disguiseClientNum].rank > 0 && (cg_drawCrosshairInfo.integer & CROSSHAIR_RANK))
-				{
-					// + 110/2
-					CG_DrawPic(middle + 55, 187, 16, 16, rankicons[cgs.clientinfo[cgs.clientinfo[cg.crosshairClientNum].disguiseClientNum].rank][cgs.clientinfo[cg.crosshairClientNum].team != TEAM_AXIS ? 1 : 0][0].shader);
-				}
-#ifdef FEATURE_PRESTIGE
-				if (cgs.prestige && cgs.clientinfo[cgs.clientinfo[cg.crosshairClientNum].disguiseClientNum].prestige > 0 && (cg_drawCrosshairInfo.integer & CROSSHAIR_PRESTIGE))
-				{
-					hasRank = (cg_drawCrosshairInfo.integer & CROSSHAIR_RANK) && cgs.clientinfo[cgs.clientinfo[cg.crosshairClientNum].disguiseClientNum].rank > 0;
-					// + 110/2
-					CG_DrawPic(middle + 55 + (hasRank ? 18 : 0), 187, 16, 16, cgs.media.prestigePics[0]);
-					CG_Text_Paint_Ext(middle + 71 + (hasRank ? 18 : 0), 198, fontScale, fontScale, color, va("%d", cgs.clientinfo[cgs.clientinfo[cg.crosshairClientNum].disguiseClientNum].prestige), 0, 0, 0, &cgs.media.limboFont2);
-				}
-#endif
-
-				// set the health
-				// - make sure it's the health for the right entity;
-				// if it's not, use the clientinfo health (which is updated by tinfo)
-				if (cg.crosshairClientNum == cg.snap->ps.identifyClient)
-				{
-					playerHealth = cg.snap->ps.identifyClientHealth;
-				}
-				else
-				{
-					playerHealth = cgs.clientinfo[cg.crosshairClientNum].health;
-				}
-
-				maxHealth = 100;
-			}
-			// removed to grant covert ops more power
-			// else
-			// {
-			//  // don't show the name after you look away, should this be a disguised covert
-			//  cg.crosshairClientTime = 0;
-			//  return;
-			// }
 		}
-		else
+		return;
+	}
+
+	// crosshair for disguised enemy
+	if (cgs.clientinfo[cg.crosshairClientNum].team != cgs.clientinfo[cg.snap->ps.clientNum].team)
+	{
+		if (!(cg_entities[cg.crosshairClientNum].currentState.powerups & (1 << PW_OPS_DISGUISED)) ||
+		    cgs.clientinfo[cg.snap->ps.clientNum].team == TEAM_SPECTATOR)
 		{
 			return;
 		}
-	}
 
-	if (!cg_drawCrosshairNames.integer && !cg_drawCrosshairInfo.integer)
-	{
-		return;
-	}
-
-	// changed this from early-exiting if true, to only executing most stuff if false. We want to
-	// show debug info regardless
-
-	// we only want to see players on our team
-	if (!isTank && !(cgs.clientinfo[cg.snap->ps.clientNum].team != TEAM_SPECTATOR && cgs.clientinfo[cg.crosshairClientNum].team != cgs.clientinfo[cg.snap->ps.clientNum].team))
-	{
-		int i;
-
-		drawStuff = qtrue;
-
-		// draw the name and class
-		if (cg_drawCrosshairNames.integer > 0)
+		if (cgs.clientinfo[cg.snap->ps.clientNum].skill[SK_SIGNALS] >= 4 && cgs.clientinfo[cg.snap->ps.clientNum].cls == PC_FIELDOPS)
 		{
-			char   colorized[32]         = { 0 };
-			size_t colorizedBufferLength = 32;
+			// draw the name of the player being looked at
+			color = CG_FadeColor(cg.crosshairClientTime, 1000);
 
-			if (cg_drawCrosshairNames.integer == 2)
+			if (!color)
 			{
-				// Draw them with full colors
-				s = va("%s", cgs.clientinfo[cg.crosshairClientNum].name);
+				trap_R_SetColor(NULL);
+				return;
 			}
-			else
-			{
-				// Draw them with a single color (white)
-				Q_ColorizeString('7', cgs.clientinfo[cg.crosshairClientNum].cleanname, colorized, colorizedBufferLength);
-				s = colorized;
-			}
+
+			s = CG_TranslateString("Disguised Enemy!");
 			w = CG_Text_Width_Ext(s, fontScale, 0, &cgs.media.limboFont2);
-
 			CG_Text_Paint_Ext(middle - w / 2, 182, fontScale, fontScale, color, s, 0, 0, 0, &cgs.media.limboFont2);
+			return;
 		}
-		if (cg_drawCrosshairInfo.integer & CROSSHAIR_CLASS)
+
+		if (!cg_drawCrosshairNames.integer && !cg_drawCrosshairInfo.integer)
 		{
-			// - 16 - 110/2
-			CG_DrawPic(middle - 71, 187, 16, 16, cgs.media.skillPics[SkillNumForClass(cgs.clientinfo[cg.crosshairClientNum].cls)]);
-		}
-		if (cgs.clientinfo[cg.crosshairClientNum].rank > 0 && (cg_drawCrosshairInfo.integer & CROSSHAIR_RANK))
-		{
-			//  + 110/2
-			CG_DrawPic(middle + 55, 187, 16, 16, rankicons[cgs.clientinfo[cg.crosshairClientNum].rank][cgs.clientinfo[cg.crosshairClientNum].team == TEAM_AXIS ? 1 : 0][0].shader);
-		}
-#ifdef FEATURE_PRESTIGE
-		if (cgs.prestige && cgs.clientinfo[cg.crosshairClientNum].prestige > 0 && (cg_drawCrosshairInfo.integer & CROSSHAIR_PRESTIGE))
-		{
-			hasRank = (cg_drawCrosshairInfo.integer & CROSSHAIR_RANK) && cgs.clientinfo[cg.crosshairClientNum].rank > 0;
-			// + 110/2
-			CG_DrawPic(middle + 55 + (hasRank ? 18 : 0), 187, 16, 16, cgs.media.prestigePics[0]);
-			CG_Text_Paint_Ext(middle + 71 + (hasRank ? 18 : 0), 198, fontScale, fontScale, color, va("%d", cgs.clientinfo[cg.crosshairClientNum].prestige), 0, 0, 0, &cgs.media.limboFont2);
-		}
-#endif
-
-		// set the health
-		if (cg.crosshairClientNum == cg.snap->ps.identifyClient)
-		{
-			playerHealth = cg.snap->ps.identifyClientHealth;
-
-			// identifyClientHealth is sent as unsigned char and negative numbers are not transmitted - see SpectatorThink()
-			// this results in player health values behind max health
-			// adjust dead player health bogus values for the health bar
-			if (playerHealth > 156)
-			{
-				playerHealth = 0;
-			}
-		}
-		else
-		{
-			playerHealth = cgs.clientinfo[cg.crosshairClientNum].health;
+			return;
 		}
 
-		maxHealth = 100;
-		for (i = 0; i < MAX_CLIENTS; i++)
-		{
-			if (!cgs.clientinfo[i].infoValid)
-			{
-				continue;
-			}
-
-			if (cgs.clientinfo[i].team != cgs.clientinfo[cg.snap->ps.clientNum].team)
-			{
-				continue;
-			}
-
-			if (cgs.clientinfo[i].cls != PC_MEDIC)
-			{
-				continue;
-			}
-
-			maxHealth += 10;
-
-			if (maxHealth >= 125)
-			{
-				maxHealth = 125;
-				break;
-			}
-		}
-
-		if (cgs.clientinfo[cg.crosshairClientNum].skill[SK_BATTLE_SENSE] >= 3)
-		{
-			maxHealth += 15;
-		}
-
-		if (cgs.clientinfo[cg.crosshairClientNum].cls == PC_MEDIC)
-		{
-			maxHealth *= 1.12f;
-		}
+		CG_DrawCrosshairPlayerInfo(cgs.clientinfo[cg.crosshairClientNum].disguiseClientNum, (cg_entities[cg.crosshairClientNum].currentState.powerups >> PW_OPS_CLASS_1) & 7);
 	}
-
-	// draw the health bar
-	//  if ( isTank || (cg.crosshairClientNum == cg.snap->ps.identifyClient && drawStuff && cgs.clientinfo[cg.snap->ps.clientNum].team != TEAM_SPECTATOR ) )
+	// we only want to see players on our team
+	else if (!(cgs.clientinfo[cg.snap->ps.clientNum].team != TEAM_SPECTATOR && cgs.clientinfo[cg.crosshairClientNum].team != cgs.clientinfo[cg.snap->ps.clientNum].team))
 	{
-		vec4_t bgcolor, c;
-		float  barFrac = (float)playerHealth / maxHealth;
-
-		if (barFrac > 1.0f)
+		if (!cg_drawCrosshairNames.integer && !cg_drawCrosshairInfo.integer)
 		{
-			barFrac = 1.0;
-		}
-		else if (barFrac < 0)
-		{
-			barFrac = 0;
+			return;
 		}
 
-		c[0] = 1.0f;
-		c[1] = c[2] = barFrac;
-		c[3] = (0.25f + barFrac * 0.5f) * color[3];
-
-		Vector4Set(bgcolor, 1.f, 1.f, 1.f, .25f * color[3]);
-
-		// - 110/2
-		CG_FilledBar(middle - 55, 190, 110, 10, c, NULL, bgcolor, barFrac, 16);
-	}
-
-	if (isTank)
-	{
-		return;
-	}
-
-	if (drawStuff)
-	{
-		trap_R_SetColor(NULL);
+		CG_DrawCrosshairPlayerInfo(cg.crosshairClientNum, cgs.clientinfo[cg.crosshairClientNum].cls);
 	}
 }
 
 //==============================================================================
-
-#define INFOTEXT_STARTX 8
-#define INFOTEXT_STARTY 146
 
 /**
  * @brief CG_DrawSpectator
@@ -2046,7 +1970,7 @@ static void CG_DrawSpectator(void)
 	else
 	{
 #endif
-	s = CG_TranslateString(va("%s", cgs.clientinfo[cg.clientNum].shoutcaster ? "SHOUTCASTER" : "SPECTATOR"));
+	s = CG_TranslateString(va("%s", "SPECTATOR"));
 #ifdef FEATURE_EDV
 }
 #endif
@@ -2060,13 +1984,22 @@ static void CG_DrawSpectator(void)
  */
 static void CG_DrawVote(void)
 {
-	const char *str;
-	char       str1[32], str2[32];
-	int        y, charHeight;
-	float      fontScale = cg_fontScaleSP.value;
+	const char    *str;
+	char          str1[32], str2[32];
+	float         x, y, charHeight, fontScale;
+	hudStucture_t *activehud;
 
+	activehud = CG_GetActiveHUD();
+
+	fontScale  = activehud->votetext.location.h;
 	charHeight = CG_Text_Height_Ext("A", fontScale, 0, &cgs.media.limboFont2);
-	y          = INFOTEXT_STARTY + (charHeight * 2) * 5;
+	y          = activehud->votetext.location.y;
+	x          = activehud->votetext.location.x;
+
+	if (cgs.clientinfo[cg.clientNum].shoutcaster)
+	{
+		y = 180;
+	}
 
 	if (cgs.complaintEndTime > cg.time && !cg.demoPlayback && cg_complaintPopUp.integer > 0 && cgs.complaintClient >= 0)
 	{
@@ -2074,11 +2007,11 @@ static void CG_DrawVote(void)
 		Q_strncpyz(str2, Binding_FromName("vote no"), 32);
 
 		str = va(CG_TranslateString("File complaint against ^7%s^3 for team-killing?"), cgs.clientinfo[cgs.complaintClient].name);
-		CG_Text_Paint_Ext(INFOTEXT_STARTX, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
+		CG_Text_Paint_Ext(x, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
 		y += charHeight * 2;
 
 		str = va(CG_TranslateString("Press '%s' for YES, or '%s' for NO"), str1, str2);
-		CG_Text_Paint_Ext(INFOTEXT_STARTX, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
+		CG_Text_Paint_Ext(x, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
 		return;
 	}
 
@@ -2088,11 +2021,11 @@ static void CG_DrawVote(void)
 		Q_strncpyz(str2, Binding_FromName("vote no"), 32);
 
 		str = va(CG_TranslateString("Accept %s^3's application to join your fireteam?"), cgs.clientinfo[cgs.applicationClient].name);
-		CG_Text_Paint_Ext(INFOTEXT_STARTX, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
+		CG_Text_Paint_Ext(x, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
 		y += charHeight * 2;
 
 		str = va(CG_TranslateString("Press '%s' for YES, or '%s' for NO"), str1, str2);
-		CG_Text_Paint_Ext(INFOTEXT_STARTX, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
+		CG_Text_Paint_Ext(x, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
 		return;
 	}
 
@@ -2102,11 +2035,11 @@ static void CG_DrawVote(void)
 		Q_strncpyz(str2, Binding_FromName("vote no"), 32);
 
 		str = va(CG_TranslateString("Accept %s^3's proposition to invite %s^3 to join your fireteam?"), cgs.clientinfo[cgs.propositionClient2].name, cgs.clientinfo[cgs.propositionClient].name);
-		CG_Text_Paint_Ext(INFOTEXT_STARTX, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
+		CG_Text_Paint_Ext(x, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
 		y += charHeight * 2;
 
 		str = va(CG_TranslateString("Press '%s' for YES, or '%s' for NO"), str1, str2);
-		CG_Text_Paint_Ext(INFOTEXT_STARTX, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
+		CG_Text_Paint_Ext(x, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
 		return;
 	}
 
@@ -2116,11 +2049,11 @@ static void CG_DrawVote(void)
 		Q_strncpyz(str2, Binding_FromName("vote no"), 32);
 
 		str = va(CG_TranslateString("Accept %s^3's invitation to join their fireteam?"), cgs.clientinfo[cgs.invitationClient].name);
-		CG_Text_Paint_Ext(INFOTEXT_STARTX, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
+		CG_Text_Paint_Ext(x, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
 		y += charHeight * 2;
 
 		str = va(CG_TranslateString("Press '%s' for YES, or '%s' for NO"), str1, str2);
-		CG_Text_Paint_Ext(INFOTEXT_STARTX, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
+		CG_Text_Paint_Ext(x, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
 		return;
 	}
 
@@ -2130,11 +2063,11 @@ static void CG_DrawVote(void)
 		Q_strncpyz(str2, Binding_FromName("vote no"), 32);
 
 		str = CG_TranslateString("Make Fireteam private?");
-		CG_Text_Paint_Ext(INFOTEXT_STARTX, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
+		CG_Text_Paint_Ext(x, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
 		y += charHeight * 2;
 
 		str = va(CG_TranslateString("Press '%s' for YES, or '%s' for NO"), str1, str2);
-		CG_Text_Paint_Ext(INFOTEXT_STARTX, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
+		CG_Text_Paint_Ext(x, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
 		return;
 	}
 
@@ -2144,11 +2077,11 @@ static void CG_DrawVote(void)
 		Q_strncpyz(str2, Binding_FromName("vote no"), 32);
 
 		str = CG_TranslateString("Create a Fireteam?");
-		CG_Text_Paint_Ext(INFOTEXT_STARTX, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
+		CG_Text_Paint_Ext(x, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
 		y += charHeight * 2;
 
 		str = va(CG_TranslateString("Press '%s' for YES, or '%s' for NO"), str1, str2);
-		CG_Text_Paint_Ext(INFOTEXT_STARTX, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
+		CG_Text_Paint_Ext(x, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
 		return;
 	}
 
@@ -2158,11 +2091,11 @@ static void CG_DrawVote(void)
 		Q_strncpyz(str2, Binding_FromName("vote no"), 32);
 
 		str = CG_TranslateString("Join a Fireteam?");
-		CG_Text_Paint_Ext(INFOTEXT_STARTX, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
+		CG_Text_Paint_Ext(x, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
 		y += charHeight * 2.0f;
 
 		str = va(CG_TranslateString("Press '%s' for YES, or '%s' for NO"), str1, str2);
-		CG_Text_Paint_Ext(INFOTEXT_STARTX, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
+		CG_Text_Paint_Ext(x, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
 		return;
 	}
 
@@ -2226,14 +2159,14 @@ static void CG_DrawVote(void)
 		if (!(cg.snap->ps.eFlags & EF_VOTED))
 		{
 			str = va(CG_TranslateString("VOTE(%i): %s"), sec, cgs.voteString);
-			CG_Text_Paint_Ext(INFOTEXT_STARTX, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
+			CG_Text_Paint_Ext(x, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
 			y += charHeight * 2;
 
 			if (cgs.clientinfo[cg.clientNum].team != TEAM_AXIS && cgs.clientinfo[cg.clientNum].team != TEAM_ALLIES)
 			{
 
 				str = va(CG_TranslateString("YES:%i, NO:%i"), cgs.voteYes, cgs.voteNo);
-				CG_Text_Paint_Ext(INFOTEXT_STARTX, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
+				CG_Text_Paint_Ext(x, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
 				y += charHeight * 2;
 
 				str = CG_TranslateString(va("Can't vote as %s", cgs.clientinfo[cg.clientNum].shoutcaster ? "Shoutcaster" : "Spectator"));
@@ -2242,18 +2175,18 @@ static void CG_DrawVote(void)
 			{
 				str = va(CG_TranslateString("YES(%s):%i, NO(%s):%i"), str1, cgs.voteYes, str2, cgs.voteNo);
 			}
-			CG_Text_Paint_Ext(INFOTEXT_STARTX, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
+			CG_Text_Paint_Ext(x, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
 			return;
 		}
 		else
 		{
 			str = va(CG_TranslateString("YOU VOTED ON: %s"), cgs.voteString);
-			CG_Text_Paint_Ext(INFOTEXT_STARTX, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
+			CG_Text_Paint_Ext(x, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
 			y += charHeight * 2;
 
 
 			str = va(CG_TranslateString("Y:%i, N:%i"), cgs.voteYes, cgs.voteNo);
-			CG_Text_Paint_Ext(INFOTEXT_STARTX, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
+			CG_Text_Paint_Ext(x, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
 			return;
 		}
 	}
@@ -2263,31 +2196,31 @@ static void CG_DrawVote(void)
 		if (cgs.complaintClient == -1)
 		{
 			str = CG_TranslateString("Your complaint has been filed");
-			CG_Text_Paint_Ext(INFOTEXT_STARTX, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
+			CG_Text_Paint_Ext(x, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
 			return;
 		}
 		if (cgs.complaintClient == -2)
 		{
 			str = CG_TranslateString("Complaint dismissed");
-			CG_Text_Paint_Ext(INFOTEXT_STARTX, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
+			CG_Text_Paint_Ext(x, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
 			return;
 		}
 		if (cgs.complaintClient == -3)
 		{
 			str = CG_TranslateString("Server Host cannot be complained against");
-			CG_Text_Paint_Ext(INFOTEXT_STARTX, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
+			CG_Text_Paint_Ext(x, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
 			return;
 		}
 		if (cgs.complaintClient == -4)
 		{
 			str = CG_TranslateString("You were team-killed by the Server Host");
-			CG_Text_Paint_Ext(INFOTEXT_STARTX, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
+			CG_Text_Paint_Ext(x, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
 			return;
 		}
 		if (cgs.complaintClient == -5)
 		{
 			str = CG_TranslateString("You were team-killed by a bot.");
-			CG_Text_Paint_Ext(INFOTEXT_STARTX, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
+			CG_Text_Paint_Ext(x, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
 			return;
 		}
 	}
@@ -2297,28 +2230,28 @@ static void CG_DrawVote(void)
 		if (cgs.applicationClient == -1)
 		{
 			str = CG_TranslateString("Your application has been submitted");
-			CG_Text_Paint_Ext(INFOTEXT_STARTX, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
+			CG_Text_Paint_Ext(x, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
 			return;
 		}
 
 		if (cgs.applicationClient == -2)
 		{
 			str = CG_TranslateString("Your application failed");
-			CG_Text_Paint_Ext(INFOTEXT_STARTX, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
+			CG_Text_Paint_Ext(x, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
 			return;
 		}
 
 		if (cgs.applicationClient == -3)
 		{
 			str = CG_TranslateString("Your application has been approved");
-			CG_Text_Paint_Ext(INFOTEXT_STARTX, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
+			CG_Text_Paint_Ext(x, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
 			return;
 		}
 
 		if (cgs.applicationClient == -4)
 		{
 			str = CG_TranslateString("Your application reply has been sent");
-			CG_Text_Paint_Ext(INFOTEXT_STARTX, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
+			CG_Text_Paint_Ext(x, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
 			return;
 		}
 	}
@@ -2328,28 +2261,28 @@ static void CG_DrawVote(void)
 		if (cgs.propositionClient == -1)
 		{
 			str = CG_TranslateString("Your proposition has been submitted");
-			CG_Text_Paint_Ext(INFOTEXT_STARTX, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
+			CG_Text_Paint_Ext(x, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
 			return;
 		}
 
 		if (cgs.propositionClient == -2)
 		{
 			str = CG_TranslateString("Your proposition was rejected");
-			CG_Text_Paint_Ext(INFOTEXT_STARTX, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
+			CG_Text_Paint_Ext(x, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
 			return;
 		}
 
 		if (cgs.propositionClient == -3)
 		{
 			str = CG_TranslateString("Your proposition was accepted");
-			CG_Text_Paint_Ext(INFOTEXT_STARTX, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
+			CG_Text_Paint_Ext(x, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
 			return;
 		}
 
 		if (cgs.propositionClient == -4)
 		{
 			str = CG_TranslateString("Your proposition reply has been sent");
-			CG_Text_Paint_Ext(INFOTEXT_STARTX, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
+			CG_Text_Paint_Ext(x, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
 			return;
 		}
 	}
@@ -2359,28 +2292,28 @@ static void CG_DrawVote(void)
 		if (cgs.invitationClient == -1)
 		{
 			str = CG_TranslateString("Your invitation has been submitted");
-			CG_Text_Paint_Ext(INFOTEXT_STARTX, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
+			CG_Text_Paint_Ext(x, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
 			return;
 		}
 
 		if (cgs.invitationClient == -2)
 		{
 			str = CG_TranslateString("Your invitation was rejected");
-			CG_Text_Paint_Ext(INFOTEXT_STARTX, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
+			CG_Text_Paint_Ext(x, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
 			return;
 		}
 
 		if (cgs.invitationClient == -3)
 		{
 			str = CG_TranslateString("Your invitation was accepted");
-			CG_Text_Paint_Ext(INFOTEXT_STARTX, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
+			CG_Text_Paint_Ext(x, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
 			return;
 		}
 
 		if (cgs.invitationClient == -4)
 		{
 			str = CG_TranslateString("Your invitation reply has been sent");
-			CG_Text_Paint_Ext(INFOTEXT_STARTX, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
+			CG_Text_Paint_Ext(x, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
 			return;
 		}
 
@@ -2393,7 +2326,7 @@ static void CG_DrawVote(void)
 	if ((cgs.autoFireteamEndTime > cg.time && cgs.autoFireteamNum == -2) || (cgs.autoFireteamCreateEndTime > cg.time && cgs.autoFireteamCreateNum == -2) || (cgs.autoFireteamJoinEndTime > cg.time && cgs.autoFireteamJoinNum == -2))
 	{
 		str = CG_TranslateString("Response Sent");
-		CG_Text_Paint_Ext(INFOTEXT_STARTX, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
+		CG_Text_Paint_Ext(x, y, fontScale, fontScale, colorYellow, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
 		return;
 	}
 }
@@ -2452,13 +2385,17 @@ static void CG_DrawIntermission(void)
  */
 static void CG_DrawSpectatorMessage(void)
 {
-	const char *str, *str2;
-	static int lastconfigGet = 0;
-	float      fontScale = cg_fontScaleSP.value;
-	int        y, charHeight;
+	const char    *str, *str2;
+	static int    lastconfigGet = 0;
+	float         x, y, charHeight, fontScale;
+	hudStucture_t *activehud;
 
+	activehud = CG_GetActiveHUD();
+
+	fontScale  = activehud->spectatortext.location.h;
 	charHeight = CG_Text_Height_Ext("A", fontScale, 0, &cgs.media.limboFont2);
-	y          = INFOTEXT_STARTY + (charHeight * 2) * 2;
+	y          = activehud->spectatortext.location.y;
+	x          = activehud->spectatortext.location.x;
 
 #ifdef FEATURE_EDV
 	if (cgs.demoCamera.renderingFreeCam || cgs.demoCamera.renderingWeaponCam)
@@ -2490,7 +2427,7 @@ static void CG_DrawSpectatorMessage(void)
 		str2 = "ESCAPE";
 	}
 	str = va(CG_TranslateString("Press %s to open Limbo Menu"), str2);
-	CG_Text_Paint_Ext(INFOTEXT_STARTX, y, fontScale, fontScale, colorWhite, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
+	CG_Text_Paint_Ext(x, y, fontScale, fontScale, colorWhite, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
 	y += charHeight * 2;
 
 	str2 = Binding_FromName("+attack");
@@ -2506,12 +2443,12 @@ static void CG_DrawSpectatorMessage(void)
 		str = va(CG_TranslateString("Press %s to follow next player"), str2);
 	}
 
-	CG_Text_Paint_Ext(INFOTEXT_STARTX, y, fontScale, fontScale, colorWhite, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
+	CG_Text_Paint_Ext(x, y, fontScale, fontScale, colorWhite, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
 	y += charHeight * 2;
 
 	str2 = Binding_FromName("weapalt");
 	str  = va(CG_TranslateString("Press %s to follow previous player"), str2);
-	CG_Text_Paint_Ext(INFOTEXT_STARTX, y, fontScale, fontScale, colorWhite, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
+	CG_Text_Paint_Ext(x, y, fontScale, fontScale, colorWhite, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
 
 #ifdef FEATURE_MULTIVIEW
 	if (cgs.clientinfo[cg.clientNum].team == TEAM_SPECTATOR && cgs.mvAllowed)
@@ -2520,7 +2457,7 @@ static void CG_DrawSpectatorMessage(void)
 
 		str2 = Binding_FromName("mvactivate");
 		str  = va(CG_TranslateString("Press %s to %s multiview mode"), str2, ((cg.mvTotalClients > 0) ? CG_TranslateString("disable") : CG_TranslateString("activate")));
-		CG_Text_Paint_Ext(INFOTEXT_STARTX, y, fontScale, fontScale, colorWhite, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
+		CG_Text_Paint_Ext(x, y, fontScale, fontScale, colorWhite, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
 		//y += charHeight * 2;
 	}
 #endif
@@ -2586,9 +2523,8 @@ static void CG_DrawLimboMessage(void)
 {
 	const char    *str;
 	playerState_t *ps = &cg.snap->ps;
-	int           y   = INFOTEXT_STARTY;
-	int           charHeight;
-	float         fontScale = cg_fontScaleSP.value;
+	float         x, y, charHeight, fontScale;
+	hudStucture_t *activehud;
 
 #ifdef FEATURE_EDV
 	if (cgs.demoCamera.renderingFreeCam || cgs.demoCamera.renderingWeaponCam)
@@ -2597,7 +2533,12 @@ static void CG_DrawLimboMessage(void)
 	}
 #endif
 
+	activehud = CG_GetActiveHUD();
+
+	fontScale  = activehud->limbotext.location.h;
 	charHeight = CG_Text_Height_Ext("A", fontScale, 0, &cgs.media.limboFont2);
+	y          = activehud->limbotext.location.y;
+	x          = activehud->limbotext.location.x;
 
 	if (ps->stats[STAT_HEALTH] > 0)
 	{
@@ -2612,7 +2553,7 @@ static void CG_DrawLimboMessage(void)
 	if (cg_descriptiveText.integer)
 	{
 		str = CG_TranslateString("You are wounded and waiting for a medic.");
-		CG_Text_Paint_Ext(INFOTEXT_STARTX, y + charHeight * 2.0f, fontScale, fontScale, colorWhite, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
+		CG_Text_Paint_Ext(x, y + charHeight * 2.0f, fontScale, fontScale, colorWhite, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
 
 		if (cgs.gametype == GT_WOLF_LMS)
 		{
@@ -2621,7 +2562,7 @@ static void CG_DrawLimboMessage(void)
 		}
 
 		str = va(CG_TranslateString("Press %s to go into reinforcement queue."), Binding_FromName("+moveup"));
-		CG_Text_Paint_Ext(INFOTEXT_STARTX, y + 2 * charHeight * 2.0f, fontScale, fontScale, colorWhite, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
+		CG_Text_Paint_Ext(x, y + 2 * charHeight * 2.0f, fontScale, fontScale, colorWhite, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
 	}
 	else if (cgs.gametype == GT_WOLF_LMS)
 	{
@@ -2637,27 +2578,22 @@ static void CG_DrawLimboMessage(void)
 	{
 		int reinfTime = CG_CalculateReinfTime(qfalse);
 
-		// Change the number's color progressively towards red when the deployment is close.
-		// This helps bring the player's attention to the respawn counter.
-		if (reinfTime > 3)
+		// coloured respawn counter when deployment is close to bring attention to next respawn
+		if (reinfTime > 2)
 		{
 			str = va(CG_TranslateString("Deploying in ^3%d ^7seconds"), reinfTime);
 		}
-		else if (reinfTime > 2)
-		{
-			str = va(CG_TranslateString("Deploying in ^a%d ^7seconds"), reinfTime);
-		}
 		else if (reinfTime > 1)
 		{
-			str = va(CG_TranslateString("Deploying in ^8%d ^7seconds"), reinfTime);
+			str = va(CG_TranslateString("Deploying in %s%d ^7seconds"), cgs.clientinfo[cg.clientNum].health == 0 ? "^1" : "^3", reinfTime);
 		}
 		else
 		{
-			str = va(CG_TranslateString("Deploying in ^1%d ^7second"), reinfTime);
+			str = va(CG_TranslateString("Deploying in %s%d ^7second"), cgs.clientinfo[cg.clientNum].health == 0 ? "^1" : "^3", reinfTime);
 		}
 	}
 
-	CG_Text_Paint_Ext(INFOTEXT_STARTX, y, fontScale, fontScale, colorWhite, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
+	CG_Text_Paint_Ext(x, y, fontScale, fontScale, colorWhite, str, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
 
 	trap_R_SetColor(NULL);
 }
@@ -2668,11 +2604,15 @@ static void CG_DrawLimboMessage(void)
  */
 static qboolean CG_DrawFollow(void)
 {
-	float fontScale = cg_fontScaleSP.value;
-	int   charHeight;
-	int   y = INFOTEXT_STARTY;
+	float         x, y, charHeight, fontScale;
+	hudStucture_t *activehud;
 
+	activehud = CG_GetActiveHUD();
+
+	fontScale  = activehud->followtext.location.h;
 	charHeight = CG_Text_Height_Ext("A", fontScale, 0, &cgs.media.limboFont2);
+	y          = activehud->followtext.location.y;
+	x          = activehud->followtext.location.x;
 
 #ifdef FEATURE_MULTIVIEW
 	// MV following info for mainview
@@ -2692,14 +2632,14 @@ static qboolean CG_DrawFollow(void)
 	{
 		if (cgs.clientinfo[cg.snap->ps.clientNum].team == TEAM_ALLIES)
 		{
-			CG_DrawPic(INFOTEXT_STARTX + 1, y - charHeight * 2.0f - 12, 18, 12, cgs.media.alliedFlag);
+			CG_DrawPic(x + 1, y - charHeight * 2.0f - 12, 18, 12, cgs.media.alliedFlag);
 		}
 		else
 		{
-			CG_DrawPic(INFOTEXT_STARTX + 1, y - charHeight * 2.0f - 12, 18, 12, cgs.media.axisFlag);
+			CG_DrawPic(x + 1, y - charHeight * 2.0f - 12, 18, 12, cgs.media.axisFlag);
 		}
 
-		CG_DrawRect_FixedBorder(INFOTEXT_STARTX, y - charHeight * 2.0f - 13, 20, 14, 1, HUD_Border);
+		CG_DrawRect_FixedBorder(x, y - charHeight * 2.0f - 13, 20, 14, 1, HUD_Border);
 	}
 
 	// if in limbo, show different follow message
@@ -2716,23 +2656,13 @@ static qboolean CG_DrawFollow(void)
 					int deployTime   = ((cgs.clientinfo[cg.snap->ps.clientNum].team == TEAM_AXIS) ? cg_redlimbotime.integer : cg_bluelimbotime.integer) / 1000;
 					int reinfDepTime = CG_CalculateReinfTime(qfalse) + cg.snap->ps.persistant[PERS_RESPAWNS_PENALTY] * deployTime;
 
-					// Change the number's color progressively towards red when the deployment is close.
-					// This helps bring the player's attention to the respawn counter.
-					if (reinfDepTime > 3)
+					if (reinfDepTime > 1)
 					{
 						sprintf(deploytime, CG_TranslateString("Bonus Life! Deploying in ^3%d ^7seconds"), reinfDepTime);
 					}
-					else if (reinfDepTime > 2)
-					{
-						sprintf(deploytime, CG_TranslateString("Bonus Life! Deploying in ^a%d ^7seconds"), reinfDepTime);
-					}
-					else if (reinfDepTime > 1)
-					{
-						sprintf(deploytime, CG_TranslateString("Bonus Life! Deploying in ^8%d ^7seconds"), reinfDepTime);
-					}
 					else
 					{
-						sprintf(deploytime, CG_TranslateString("Bonus Life! Deploying in ^1%d ^7second"), reinfDepTime);
+						sprintf(deploytime, CG_TranslateString("Bonus Life! Deploying in ^3%d ^7second"), reinfDepTime);
 					}
 				}
 				else
@@ -2744,27 +2674,18 @@ static qboolean CG_DrawFollow(void)
 			{
 				int reinfTime = CG_CalculateReinfTime(qfalse);
 
-				// Change the number's color progressively towards red when the deployment is close.
-				// This helps bring the player's attention to the respawn counter.
-				if (reinfTime > 3)
+				// coloured respawn counter when deployment is close to bring attention to next respawn
+				if (reinfTime > 1)
 				{
 					sprintf(deploytime, CG_TranslateString("Deploying in ^3%d ^7seconds"), reinfTime);
 				}
-				else if (reinfTime > 2)
-				{
-					sprintf(deploytime, CG_TranslateString("Deploying in ^a%d ^7seconds"), reinfTime);
-				}
-				else if (reinfTime > 1)
-				{
-					sprintf(deploytime, CG_TranslateString("Deploying in ^8%d ^7seconds"), reinfTime);
-				}
 				else
 				{
-					sprintf(deploytime, CG_TranslateString("Deploying in ^1%d ^7second"), reinfTime);
+					sprintf(deploytime, CG_TranslateString("Deploying in ^3%d ^7second"), reinfTime);
 				}
 			}
 
-			CG_Text_Paint_Ext(INFOTEXT_STARTX, y, fontScale, fontScale, colorWhite, deploytime, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
+			CG_Text_Paint_Ext(x, y, fontScale, fontScale, colorWhite, deploytime, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
 			y += charHeight * 2.0f;
 		}
 
@@ -2778,11 +2699,11 @@ static qboolean CG_DrawFollow(void)
 			int        startRank  = CG_Text_Width_Ext(w, fontScale, 0, &cgs.media.limboFont2) + 14 + 2 * charWidth;
 			int        endRank;
 
-			CG_DrawPic(INFOTEXT_STARTX + startClass, y - 10, 14, 14, cgs.media.skillPics[SkillNumForClass(cgs.clientinfo[cg.snap->ps.clientNum].cls)]);
+			CG_DrawPic(x + startClass, y - 10, 14, 14, cgs.media.skillPics[SkillNumForClass(cgs.clientinfo[cg.snap->ps.clientNum].cls)]);
 
 			if (cgs.clientinfo[cg.snap->ps.clientNum].rank > 0)
 			{
-				CG_DrawPic(INFOTEXT_STARTX + startClass + startRank, y - 10, 14, 14, rankicons[cgs.clientinfo[cg.snap->ps.clientNum].rank][cgs.clientinfo[cg.snap->ps.clientNum].team == TEAM_AXIS ? 1 : 0][0].shader);
+				CG_DrawPic(x + startClass + startRank, y - 10, 14, 14, rankicons[cgs.clientinfo[cg.snap->ps.clientNum].rank][cgs.clientinfo[cg.snap->ps.clientNum].team == TEAM_AXIS ? 1 : 0][0].shader);
 				endRank = 14;
 			}
 			else
@@ -2790,9 +2711,9 @@ static qboolean CG_DrawFollow(void)
 				endRank = -charWidth;
 			}
 
-			CG_Text_Paint_Ext(INFOTEXT_STARTX, y, fontScale, fontScale, colorWhite, va("(%s", follow), 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
-			CG_Text_Paint_Ext(INFOTEXT_STARTX + startClass + 14 + charWidth, y, fontScale, fontScale, colorWhite, w, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
-			CG_Text_Paint_Ext(INFOTEXT_STARTX + startClass + startRank + endRank, y, fontScale, fontScale, colorWhite, ")", 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
+			CG_Text_Paint_Ext(x, y, fontScale, fontScale, colorWhite, va("(%s", follow), 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
+			CG_Text_Paint_Ext(x + startClass + 14 + charWidth, y, fontScale, fontScale, colorWhite, w, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
+			CG_Text_Paint_Ext(x + startClass + startRank + endRank, y, fontScale, fontScale, colorWhite, ")", 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
 		}
 	}
 	else
@@ -2802,18 +2723,18 @@ static qboolean CG_DrawFollow(void)
 		int        charWidth  = CG_Text_Width_Ext("A", fontScale, 0, &cgs.media.limboFont2);
 		int        startClass = CG_Text_Width_Ext(follow, fontScale, 0, &cgs.media.limboFont2) + charWidth;
 
-		CG_DrawPic(INFOTEXT_STARTX + startClass, y - 10, 14, 14, cgs.media.skillPics[SkillNumForClass(cgs.clientinfo[cg.snap->ps.clientNum].cls)]);
+		CG_DrawPic(x + startClass, y - 10, 14, 14, cgs.media.skillPics[SkillNumForClass(cgs.clientinfo[cg.snap->ps.clientNum].cls)]);
 
 		if (cgs.clientinfo[cg.snap->ps.clientNum].rank > 0)
 		{
 			int startRank;
 
 			startRank = CG_Text_Width_Ext(w, fontScale, 0, &cgs.media.limboFont2) + 14 + 2 * charWidth;
-			CG_DrawPic(INFOTEXT_STARTX + startClass + startRank, y - 10, 14, 14, rankicons[cgs.clientinfo[cg.snap->ps.clientNum].rank][cgs.clientinfo[cg.snap->ps.clientNum].team == TEAM_AXIS ? 1 : 0][0].shader);
+			CG_DrawPic(x + startClass + startRank, y - 10, 14, 14, rankicons[cgs.clientinfo[cg.snap->ps.clientNum].rank][cgs.clientinfo[cg.snap->ps.clientNum].team == TEAM_AXIS ? 1 : 0][0].shader);
 		}
 
-		CG_Text_Paint_Ext(INFOTEXT_STARTX, y, fontScale, fontScale, colorWhite, follow, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
-		CG_Text_Paint_Ext(INFOTEXT_STARTX + startClass + 14 + charWidth, y, fontScale, fontScale, colorWhite, w, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
+		CG_Text_Paint_Ext(x, y, fontScale, fontScale, colorWhite, follow, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
+		CG_Text_Paint_Ext(x + startClass + 14 + charWidth, y, fontScale, fontScale, colorWhite, w, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
 	}
 
 	return qtrue;
@@ -2839,7 +2760,7 @@ static void CG_DrawWarmup(void)
 				s1 = va(CG_TranslateString("^3Config: ^7%s^7"), CG_ConfigString(CS_CONFIGNAME));
 				w  = CG_Text_Width_Ext(s1, cg_fontScaleCP.value, 0, &cgs.media.limboFont2);
 				x  = Ccg_WideX(320) - w / 2;
-				CG_Text_Paint_Ext(x, 290, cg_fontScaleCP.value, cg_fontScaleCP.value, colorWhite, s1, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
+				CG_Text_Paint_Ext(x, 340, cg_fontScaleCP.value, cg_fontScaleCP.value, colorWhite, s1, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
 			}
 
 			if (cgs.minclients > 0)
@@ -2853,26 +2774,52 @@ static void CG_DrawWarmup(void)
 
 			w = CG_Text_Width_Ext(s1, fontScale, 0, &cgs.media.limboFont2);
 			x = Ccg_WideX(320) - w / 2;
-			CG_Text_Paint_Ext(x, 208, fontScale, fontScale, colorWhite, s1, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
+			CG_Text_Paint_Ext(x, 104, fontScale, fontScale, colorWhite, s1, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
 
 			if (!cg.demoPlayback && cg.snap->ps.persistant[PERS_TEAM] != TEAM_SPECTATOR &&
 			    (!(cg.snap->ps.pm_flags & PMF_FOLLOW) || (cg.snap->ps.pm_flags & PMF_LIMBO)))
 			{
 				char str1[32];
+				int  y = 360;
 
-				Q_strncpyz(str1, Binding_FromName("ready"), 32);
-				if (!Q_stricmp(str1, "(?" "?" "?)"))
+				if (cg.snap->ps.eFlags & EF_READY)
 				{
-					s2 = CG_TranslateString("Type ^3\\ready^7 in the console to start");
+					s2 = CG_TranslateString("^2Ready");
+
+					w = CG_Text_Width_Ext(s2, cg_fontScaleCP.value, 0, &cgs.media.limboFont2);
+					x = Ccg_WideX(320) - w / 2;
+					CG_Text_Paint_Ext(x, y, cg_fontScaleCP.value, cg_fontScaleCP.value, colorWhite, s2, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
+
+					y += 20;
+
+					Q_strncpyz(str1, Binding_FromName("notready"), 32);
+					if (!Q_stricmp(str1, "(?" "?" "?)"))
+					{
+						s2 = CG_TranslateString("Type ^3\\notready^7 in the console to unready");
+					}
+					else
+					{
+						s2 = va(CG_TranslateString("^7Press ^3%s^7 to unready"), str1);
+						s2 = CG_TranslateString(s2);
+					}
 				}
 				else
 				{
-					s2 = va(CG_TranslateString("Press ^3%s^7 to start"), str1);
-					s2 = CG_TranslateString(s2);
+					Q_strncpyz(str1, Binding_FromName("ready"), 32);
+					if (!Q_stricmp(str1, "(?" "?" "?)"))
+					{
+						s2 = CG_TranslateString("Type ^3\\ready^7 in the console to start");
+					}
+					else
+					{
+						s2 = va(CG_TranslateString("Press ^3%s^7 to start"), str1);
+						s2 = CG_TranslateString(s2);
+					}
 				}
+
 				w = CG_Text_Width_Ext(s2, cg_fontScaleCP.value, 0, &cgs.media.limboFont2);
 				x = Ccg_WideX(320) - w / 2;
-				CG_Text_Paint_Ext(x, 310, cg_fontScaleCP.value, cg_fontScaleCP.value, colorWhite, s2, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
+				CG_Text_Paint_Ext(x, y, cg_fontScaleCP.value, cg_fontScaleCP.value, colorWhite, s2, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
 			}
 			return;
 		}
@@ -2932,7 +2879,7 @@ static void CG_DrawWarmup(void)
 		s = va("%s %i", CG_TranslateString("STOPWATCH ROUND"), cgs.currentRound + 1);
 
 		cs       = CG_ConfigString(CS_MULTI_INFO);
-		defender = atoi(Info_ValueForKey(cs, "d")); // defender
+		defender = Q_atoi(Info_ValueForKey(cs, "d")); // defender
 
 		if (!defender)
 		{
@@ -3101,7 +3048,14 @@ static void CG_DrawFlashFade(void)
 			{
 				if (cg.snap->ps.powerups[PW_BLACKOUT] & i)
 				{
-					CG_Text_Paint_Ext(INFOTEXT_STARTX, nOffset, cg_fontScaleSP.value, cg_fontScaleSP.value, color, va(CG_TranslateString("The %s team is speclocked!"), teams[i]), 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
+					int  w, x;
+					char *s1;
+
+					s1 = va(CG_TranslateString("The %s team is speclocked!"), teams[i]);
+					w  = CG_Text_Width_Ext(s1, cg_fontScaleSP.value, 0, &cgs.media.limboFont2);
+					x  = Ccg_WideX(320) - w / 2;
+
+					CG_Text_Paint_Ext(x, nOffset, cg_fontScaleSP.value, cg_fontScaleSP.value, color, s1, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
 					nOffset += 12;
 				}
 			}
@@ -3158,22 +3112,64 @@ static void CG_DrawFlashDamage(void)
 		return;
 	}
 
+	if (cg_bloodFlash.value <= 0.f || cg_bloodFlashTime.value <= 0.f)
+	{
+		return;
+	}
+
 	if (cg.v_dmg_time > cg.time)
 	{
-		vec4_t col      = { 0.2f, 0.f, 0.f, 0.f };
-		float  redFlash = Q_fabs(cg.v_dmg_pitch * ((cg.v_dmg_time - cg.time) / DAMAGE_TIME));
+		vec4_t col = { 0.2f, 0.f, 0.f, 0.f };
+		float  width;
 
-		// blend the entire screen red
-		if (redFlash > 5)
+		width = Ccg_WideX(SCREEN_WIDTH);
+
+		col[3] = (1 - (cg.time - cg.v_dmg_time) / cg_bloodFlashTime.value) * Com_Clamp(0.f, 1.f, cg_bloodFlash.value);
+
+		if (cg.v_dmg_angle == -1.f) // all borders
 		{
-			redFlash = 5;
+			// horrible duplicate from differentes borders below
+			GradientRound_Paint(width * 0.125f, -SCREEN_HEIGHT * 0.125f, width * 0.75f, SCREEN_HEIGHT * 0.25f, col);
+			GradientRound_Paint(width - width * 0.33f, -SCREEN_HEIGHT * 0.33f, width * 0.66f, SCREEN_HEIGHT * 0.66f, col);
+			GradientRound_Paint(width - width * 0.125f, 0, width * 0.25f, SCREEN_HEIGHT, col);
+			GradientRound_Paint(width - width * 0.33f, SCREEN_HEIGHT - SCREEN_HEIGHT * 0.33f, width * 0.66f, SCREEN_HEIGHT * 0.66f, col);
+			GradientRound_Paint(width * 0.125f, SCREEN_HEIGHT - SCREEN_HEIGHT * 0.125f, width * 0.75f, SCREEN_HEIGHT * 0.25f, col);
+			GradientRound_Paint(-width * 0.33f, SCREEN_HEIGHT - SCREEN_HEIGHT * 0.33f, width * 0.66f, SCREEN_HEIGHT * 0.66f, col);
+			GradientRound_Paint(-width * 0.125f, 0, width * 0.25f, SCREEN_HEIGHT, col);
+			GradientRound_Paint(-width * 0.33f, -SCREEN_HEIGHT * 0.33f, width * 0.66f, SCREEN_HEIGHT * 0.66f, col);
 		}
-
-		col[3] = 0.7f * (redFlash / 5.0f) * ((cg_bloodFlash.value > 1.0f) ? 1.0f :
-		                                     (cg_bloodFlash.value < 0.0f) ? 0.0f :
-		                                     cg_bloodFlash.value);
-
-		CG_FillRect(0, 0, Ccg_WideX(SCREEN_WIDTH), SCREEN_HEIGHT, col);
+		else if (cg.v_dmg_angle < 30 || cg.v_dmg_angle >= 330)  // top
+		{
+			GradientRound_Paint(width * 0.125f, -SCREEN_HEIGHT * 0.125f, width * 0.75f, SCREEN_HEIGHT * 0.25f, col);
+		}
+		else if (/*cg.v_dmg_angle >= 30 &&*/ cg.v_dmg_angle < 60)   // top right corner
+		{
+			GradientRound_Paint(width - width * 0.33f, -SCREEN_HEIGHT * 0.33f, width * 0.66f, SCREEN_HEIGHT * 0.66f, col);
+		}
+		else if (cg.v_dmg_angle >= 60 && cg.v_dmg_angle < 120)  // right
+		{
+			GradientRound_Paint(width - width * 0.125f, 0, width * 0.25f, SCREEN_HEIGHT, col);
+		}
+		else if (cg.v_dmg_angle >= 120 && cg.v_dmg_angle < 150) // bottom right corner
+		{
+			GradientRound_Paint(width - width * 0.33f, SCREEN_HEIGHT - SCREEN_HEIGHT * 0.33f, width * 0.66f, SCREEN_HEIGHT * 0.66f, col);
+		}
+		else if (cg.v_dmg_angle >= 150 && cg.v_dmg_angle < 210) // bottom
+		{
+			GradientRound_Paint(width * 0.125f, SCREEN_HEIGHT - SCREEN_HEIGHT * 0.125f, width * 0.75f, SCREEN_HEIGHT * 0.25f, col);
+		}
+		else if (cg.v_dmg_angle >= 210 && cg.v_dmg_angle < 240) // bottom left corner
+		{
+			GradientRound_Paint(-width * 0.33f, SCREEN_HEIGHT - SCREEN_HEIGHT * 0.33f, width * 0.66f, SCREEN_HEIGHT * 0.66f, col);
+		}
+		else if (cg.v_dmg_angle >= 240 && cg.v_dmg_angle < 300) // left
+		{
+			GradientRound_Paint(-width * 0.125f, 0, width * 0.25f, SCREEN_HEIGHT, col);
+		}
+		else //if (cg.v_dmg_angle >= 300 && cg.v_dmg_angle < 330)   // top left corner
+		{
+			GradientRound_Paint(-width * 0.33f, -SCREEN_HEIGHT * 0.33f, width * 0.66f, SCREEN_HEIGHT * 0.66f, col);
+		}
 	}
 }
 
@@ -3246,13 +3242,7 @@ static void CG_DrawFlashBlendBehindHUD(void)
 {
 	CG_DrawFlashZoomTransition();
 	CG_DrawFlashFade();
-}
 
-/**
- * @brief Screen flash stuff drawn last (on top of everything)
- */
-static void CG_DrawFlashBlend(void)
-{
 	// no flash blends if in limbo or spectator, and in the limbo menu
 	if (((cg.snap->ps.pm_flags & PMF_LIMBO) || cgs.clientinfo[cg.clientNum].team == TEAM_SPECTATOR) && cg.showGameView)
 	{
@@ -3660,6 +3650,80 @@ void CG_DrawOnScreenLabels(void)
 }
 
 /**
+* @brief CG_DrawOnScreenBars
+*/
+void CG_DrawOnScreenBars(void)
+{
+	static vec3_t mins  = { -1, -1, -1 };
+	static vec3_t maxs  = { 1, 1, 1 };
+	vec4_t        white = { 1.0f, 1.0f, 1.0f, 1.0f };
+	int           i;
+	specBar_t     *specBar;
+	trace_t       tr;
+	int           FadeOut = 0;
+	int           FadeIn  = 0;
+
+	for (i = 0; i < cg.specBarCount; ++i)
+	{
+		specBar = &cg.specOnScreenBar[i];
+
+		// Visible checks if information is actually valid
+		if (!specBar || !specBar->visible)
+		{
+			continue;
+		}
+
+		CG_Trace(&tr, cg.refdef.vieworg, mins, maxs, specBar->origin, -1, CONTENTS_SOLID);
+
+		if (tr.fraction < 1.0f)
+		{
+			specBar->lastInvisibleTime = cg.time;
+		}
+		else
+		{
+			specBar->lastVisibleTime = cg.time;
+		}
+
+		FadeOut = cg.time - specBar->lastVisibleTime;
+		FadeIn  = cg.time - specBar->lastInvisibleTime;
+
+		if (FadeIn)
+		{
+			white[3] = (FadeIn > 500) ? 1.0 : FadeIn / 500.0f;
+			if (white[3] < specBar->alpha)
+			{
+				white[3] = specBar->alpha;
+			}
+		}
+		if (FadeOut)
+		{
+			white[3] = (FadeOut > 500) ? 0.0 : 1.0f - FadeOut / 500.0f;
+			if (white[3] > specBar->alpha)
+			{
+				white[3] = specBar->alpha;
+			}
+		}
+		if (white[3] > 1.0f)
+		{
+			white[3] = 1.0f;
+		}
+
+		specBar->alpha = white[3];
+		if (specBar->alpha <= 0.0f)
+		{
+			continue;                           // no alpha = nothing to draw..
+		}
+
+		CG_FilledBar(specBar->x, specBar->y, specBar->w, specBar->h, specBar->colorStart, specBar->colorEnd, specBar->colorBack, specBar->fraction, BAR_BG);
+
+		// expect update next frame again
+		specBar->visible = qfalse;
+	}
+
+	cg.specBarCount = 0;
+}
+
+/**
  * @brief CG_DrawBannerPrint
  */
 static void CG_DrawBannerPrint(void)
@@ -3685,6 +3749,160 @@ static void CG_DrawBannerPrint(void)
 	lineHeight = ((float)CG_Text_Height_Ext("M", 0.23, 0, &cgs.media.limboFont2) * 1.5f);
 
 	CG_DrawMultilineText(Ccg_WideX(320), 20, 0.23, 0.23, color, cg.bannerPrint, lineHeight, 0, 0, ITEM_TEXTSTYLE_SHADOWED, ITEM_ALIGN_CENTER, &cgs.media.limboFont2);
+}
+
+#define MAX_DISTANCE 2000.f
+#define COEFF_DISTANCE 0.5f
+#define ICONS_SIZE 8
+
+/**
+ * @brief CG_DrawEnvironmentalAwareness
+ */
+static void CG_DrawEnvironmentalAwareness()
+{
+	snapshot_t *snap;
+	int        i;
+
+	if (!cg_drawEnvAwareness.integer)
+	{
+		return;
+	}
+
+	if (cg.nextSnap && !cg.nextFrameTeleport && !cg.thisFrameTeleport)
+	{
+		snap = cg.nextSnap;
+	}
+	else
+	{
+		snap = cg.snap;
+	}
+
+	if (cg.snap->ps.stats[STAT_HEALTH] <= 0)
+	{
+		return;
+	}
+
+	for (i = 0; i < snap->numEntities; ++i)
+	{
+		centity_t *cent = &cg_entities[snap->entities[i].number];
+		qhandle_t icon;
+		vec3_t    dir;
+		float     len;
+
+		// skip self
+		if (cent->currentState.eType == ET_PLAYER && cent->currentState.clientNum == cg.clientNum)
+		{
+			continue;
+		}
+
+		VectorSubtract(cent->lerpOrigin, cg.predictedPlayerState.origin, dir);
+		len = VectorLength(dir);
+
+		// too far to draw
+		if (len > MAX_DISTANCE * COEFF_DISTANCE)
+		{
+			continue;
+		}
+
+		icon = CG_GetCompassIcon(&snap->entities[i], qfalse, qfalse);
+
+		if (icon)
+		{
+			vec4_t col = { 1.f, 1.f, 1.f, 1.f };
+			vec3_t angles;
+
+			col[3] -= len / (MAX_DISTANCE * COEFF_DISTANCE);
+
+			VectorNormalize(dir);
+			vectoangles(dir, angles);
+
+			if (VectorCompare(dir, vec3_origin))
+			{
+				continue;
+			}
+
+			AnglesSubtract(cg.predictedPlayerState.viewangles, angles, angles);
+
+			// can we see the target
+			if (angles[PITCH] >= -cg.refdef_current->fov_y / 2
+			    && angles[PITCH] <= cg.refdef_current->fov_y / 2)
+			{
+				if (angles[YAW] >= -cg.refdef_current->fov_x / 2
+				    && angles[YAW] <= cg.refdef_current->fov_x / 2)
+				{
+					trace_t trace;
+					float   front, left, up;
+					float   x, y;
+					int     skipNumber = cg.snap->ps.clientNum;
+					vec3_t  start, end;
+					VectorCopy(cg.refdef.vieworg, start);
+
+					if (cent->currentState.eType == ET_PLAYER)
+					{
+						VectorCopy(cent->pe.headRefEnt.origin, end);
+					}
+					else
+					{
+						VectorCopy(cent->lerpOrigin, end);
+					}
+
+					// trace to the target player and ignore other players
+					do
+					{
+						CG_Trace(&trace, start, NULL, NULL, end, skipNumber, CONTENTS_SOLID);
+						skipNumber = trace.entityNum;
+						VectorCopy(trace.endpos, start);
+					}
+					while (trace.fraction != 0.f && trace.fraction != 1.f
+					       && trace.entityNum < ENTITYNUM_WORLD && trace.entityNum != cent->currentState.number);
+
+					// we can see the target, no need to draw the icon
+					if (trace.fraction == 1.f || trace.entityNum == cent->currentState.number)
+					{
+						continue;
+					}
+
+					// too close to draw
+					if (len < 64.f)
+					{
+						continue;
+					}
+
+					VectorSubtract(vec3_origin, dir, dir);
+
+					front = DotProduct(dir, cg.refdef.viewaxis[0]);
+					left  = DotProduct(dir, cg.refdef.viewaxis[1]);
+					up    = DotProduct(dir, cg.refdef.viewaxis[2]);
+
+					dir[0] = front;
+					dir[1] = left;
+					dir[2] = 0;
+					len    = VectorLength(dir);
+					if (len < 0.1f)
+					{
+						len = 0.1f;
+					}
+
+					x = -left / front;
+					y = up / len;
+
+					trap_R_SetColor(col);
+					CG_DrawPic(Ccg_WideX(SCREEN_WIDTH) / 2.f + (Ccg_WideX(SCREEN_WIDTH) / 2.f) * x,
+					           SCREEN_HEIGHT / 2.f + (SCREEN_HEIGHT / 2.f) * y,
+					           ICONS_SIZE, ICONS_SIZE, icon);
+					trap_R_SetColor(NULL);
+
+					continue;
+				}
+			}
+
+			trap_R_SetColor(col);
+			CG_DrawCompassIcon(Ccg_WideX(SCREEN_WIDTH) * 0.125f, SCREEN_HEIGHT * 0.125f,
+			                   Ccg_WideX(SCREEN_WIDTH) * 0.75f, SCREEN_HEIGHT * 0.75f,
+			                   cg.predictedPlayerState.origin, cent->lerpOrigin, icon, COEFF_DISTANCE, ICONS_SIZE);
+			trap_R_SetColor(NULL);
+		}
+	}
 }
 
 /**
@@ -3713,9 +3931,10 @@ static void CG_Draw2D(void)
 		return;
 	}
 
-	if (cg.snap->ps.persistant[PERS_TEAM] == TEAM_SPECTATOR || cgs.clientinfo[cg.clientNum].shoutcaster)
+	if (cg.snap->ps.persistant[PERS_TEAM] == TEAM_SPECTATOR || cgs.clientinfo[cg.clientNum].shoutcaster || cg.demoPlayback)
 	{
 		CG_DrawOnScreenLabels();
+		CG_DrawOnScreenBars();
 	}
 
 	// no longer cheat protected, we draw crosshair/reticle in non demoplayback
@@ -3731,12 +3950,10 @@ static void CG_Draw2D(void)
 	}
 #ifdef FEATURE_EDV
 	if (!cgs.demoCamera.renderingFreeCam && !cgs.demoCamera.renderingWeaponCam)
+#endif
 	{
 		CG_DrawFlashBlendBehindHUD();
 	}
-#else
-	CG_DrawFlashBlendBehindHUD();
-#endif
 
 #ifdef FEATURE_EDV
 	if (cg.snap->ps.persistant[PERS_TEAM] == TEAM_SPECTATOR || cgs.demoCamera.renderingFreeCam || cgs.demoCamera.renderingWeaponCam)
@@ -3744,10 +3961,11 @@ static void CG_Draw2D(void)
 	if (cg.snap->ps.persistant[PERS_TEAM] == TEAM_SPECTATOR)
 #endif
 	{
-		if (!CG_DrawScoreboard())
+		if (!CG_DrawScoreboard() && !cgs.clientinfo[cg.clientNum].shoutcaster)
 		{
 			CG_DrawSpectator();
 		}
+
 		CG_DrawCrosshair();
 		CG_DrawCrosshairNames();
 
@@ -3762,6 +3980,7 @@ static void CG_Draw2D(void)
 			CG_DrawCrosshair();
 			CG_DrawCrosshairNames();
 			CG_DrawNoShootIcon();
+			CG_DrawEnvironmentalAwareness();
 		}
 
 		CG_DrawTeamInfo();
@@ -3780,13 +3999,25 @@ static void CG_Draw2D(void)
 
 		CG_SetHud();
 
+		if (cgs.clientinfo[cg.clientNum].shoutcaster && cg_shoutcastDrawPlayers.integer)
+		{
+			CG_DrawShoutcastPlayerList();
+		}
+
 #ifdef FEATURE_EDV
 		if (cg.snap->ps.persistant[PERS_TEAM] != TEAM_SPECTATOR && !cgs.demoCamera.renderingFreeCam && !cgs.demoCamera.renderingWeaponCam)
 #else
 		if (cg.snap->ps.persistant[PERS_TEAM] != TEAM_SPECTATOR)
 #endif
 		{
-			CG_DrawActiveHud();
+			if (cgs.clientinfo[cg.clientNum].shoutcaster && cg.snap->ps.pm_flags & PMF_FOLLOW)
+			{
+				CG_DrawShoutcastPlayerStatus();
+			}
+			else
+			{
+				CG_DrawActiveHud();
+			}
 		}
 
 		if (!cg_paused.integer)
@@ -3798,17 +4029,29 @@ static void CG_Draw2D(void)
 #ifdef FEATURE_EDV
 		if (!cgs.demoCamera.renderingFreeCam && !cgs.demoCamera.renderingWeaponCam)
 		{
-			CG_DrawFollow();
+			if (!cgs.clientinfo[cg.clientNum].shoutcaster)
+			{
+				CG_DrawFollow();
+			}
 		}
 #else
-		CG_DrawFollow();
+		if (!cgs.clientinfo[cg.clientNum].shoutcaster)
+		{
+			CG_DrawFollow();
+		}
 #endif
 
 		CG_DrawWarmup();
 		CG_DrawGlobalHud();
-		CG_DrawObjectiveInfo();
-		CG_DrawSpectatorMessage();
+
+		if (!cgs.clientinfo[cg.clientNum].shoutcaster)
+		{
+			CG_DrawObjectiveInfo();
+			CG_DrawSpectatorMessage();
+		}
+
 		CG_DrawLimboMessage();
+
 		CG_DrawVote();
 	}
 	else
@@ -3836,20 +4079,11 @@ static void CG_Draw2D(void)
 
 #ifdef FEATURE_EDV
 	if (!cgs.demoCamera.renderingFreeCam && !cgs.demoCamera.renderingWeaponCam)
+#endif
 	{
 		// window updates
 		CG_windowDraw();
-
-		// draw flash blends now
-		CG_DrawFlashBlend();
 	}
-#else
-	// window updates
-	CG_windowDraw();
-
-	// draw flash blends now
-	CG_DrawFlashBlend();
-#endif
 
 	CG_DrawDemoRecording();
 }

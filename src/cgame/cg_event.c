@@ -1856,6 +1856,56 @@ void CG_PlayGlobalSound(centity_t *cent, int index)
 
 extern void CG_AddBulletParticles(vec3_t origin, vec3_t dir, int speed, int duration, int count, float randScale);
 
+void CG_PlayHitSound(const int clientNum, const int hitSound)
+{
+	// Do we have hitsounds even enabled
+	if (!(cg_hitSounds.integer & HITSOUNDS_ON))
+	{
+		return;
+	}
+
+	// Are we spectating someone?
+	if (cg.snap->ps.clientNum != cg.clientNum && cgs.clientinfo[cg.clientNum].team != TEAM_SPECTATOR && !(cg.snap->ps.pm_flags & PMF_LIMBO))
+	{
+		return;
+	}
+
+	// Is the event for the current client (might be the player or a player being spectated)
+	if (clientNum != cg.snap->ps.clientNum)
+	{
+		return;
+	}
+
+	switch (hitSound)
+	{
+		case HIT_TEAMSHOT:
+			if (!(cg_hitSounds.integer & HITSOUNDS_NOTEAMSHOT))
+			{
+				trap_S_StartLocalSound(cgs.media.teamShot, CHAN_LOCAL_SOUND);
+			}
+			break;
+		case HIT_HEADSHOT:
+			if (!(cg_hitSounds.integer & HITSOUNDS_NOHEADSHOT))
+			{
+				trap_S_StartLocalSound(cgs.media.headShot, CHAN_LOCAL_SOUND);
+			}
+			else if (!(cg_hitSounds.integer & HITSOUNDS_NOBODYSHOT))
+			{
+				trap_S_StartLocalSound(cgs.media.bodyShot, CHAN_LOCAL_SOUND);
+			}
+			break;
+		case HIT_BODYSHOT:
+			if (!(cg_hitSounds.integer & HITSOUNDS_NOBODYSHOT))
+			{
+				trap_S_StartLocalSound(cgs.media.bodyShot, CHAN_LOCAL_SOUND);
+			}
+			break;
+		default:
+			CG_DPrintf("Unkown hitsound: %i\n", hitSound);
+			break;
+	}
+}
+
 /**
  * @brief An entity has an event value also called by CG_CheckPlayerstateEvents
  * @param[in] cent
@@ -2459,10 +2509,6 @@ void CG_EntityEvent(centity_t *cent, vec3_t position)
 		CG_GibPlayer(cent, cent->lerpOrigin, dir);
 	}
 	break;
-	case EV_STOPLOOPINGSOUND:
-		es->loopSound = 0;
-		break;
-
 	// particles
 	case EV_SMOKE:
 		if (cent->currentState.density == 3)
@@ -2801,12 +2847,15 @@ void CG_EntityEvent(centity_t *cent, vec3_t position)
         if (cg_weapons[es->weapon].missileFallSound.count)
         {
             int i = cg_weapons[es->weapon].missileFallSound.count;
-            
+
             i = rand() % i;
-            
+
             trap_S_StartSoundExVControl(NULL, es->number, CHAN_AUTO, cg_weapons[es->weapon].missileFallSound.sounds[i], SND_OKTOCUT, 255);
         }
         break;
+	case EV_PLAYER_HIT:
+		CG_PlayHitSound(es->clientNum, es->eventParm);
+		break;
 	default:
 		if (cg.demoPlayback)
 		{

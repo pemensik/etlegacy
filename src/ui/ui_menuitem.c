@@ -1352,7 +1352,7 @@ const char *Item_Multi_Setting(itemDef_t *item)
 		}
 		else
 		{
-			return((multiPtr->count == 0) ? trap_TranslateString("None Defined") : trap_TranslateString("Custom"));
+			return((multiPtr->count == 0) ? DC->translateString(_("None Defined")) : DC->translateString(_("Custom")));
 		}
 	}
 	return "";
@@ -1612,9 +1612,11 @@ qboolean Item_TextField_HandleKey(itemDef_t *item, int key)
 	if (editPtr->maxChars && valueLen > editPtr->maxChars)
 	{
 		valueLen = editPtr->maxChars;
+		size_t cutOff = Q_UTF8_ByteOffset(buff, editPtr->maxChars);
+		Com_Memset(&buff[cutOff], 0, sizeof(buff) - cutOff);
 	}
 
-	// make sure our cursorpos doesn't go oob, windows doesn't like negative memory copy operations :)
+	// make sure our cursor pos doesn't go oob, windows doesn't like negative memory copy operations :)
 	if (item->cursorPos < 0 || item->cursorPos > valueLen)
 	{
 		item->cursorPos = 0;
@@ -1668,15 +1670,16 @@ qboolean Item_TextField_HandleKey(itemDef_t *item, int key)
 			if (item->type != ITEM_TYPE_NUMERICFIELD)
 			{
 				char clipbuff[1024];
-				int  clipbuff32[256];
+				uint32_t  clipbuff32[256];
 
 				Com_Memset(clipbuff, 0, sizeof(clipbuff));
-				Com_Memset(clipbuff32, 0, sizeof(int) * 256);
+				Com_Memset(clipbuff32, 0, sizeof(uint32_t) * 256);
 
 				DC->getClipboardData(clipbuff, sizeof(clipbuff));
 				if (strlen(clipbuff))
 				{
-					int i = 0, cliplen = 0;
+					int i = 0;
+					size_t cliplen = 0;
 
 					Q_UTF8_ToUTF32(clipbuff, clipbuff32, &cliplen);
 					for (; i < cliplen; i++)
@@ -2807,7 +2810,7 @@ void Item_YesNo_Paint(itemDef_t *item)
 	{
 		Item_Text_Paint(item);
 		DC->drawText(item->textRect.x + item->textRect.w + 8, item->textRect.y, item->textscale, newColor,
-		             value != 0.f ? DC->translateString("Yes") : DC->translateString("No"), 0, 0, item->textStyle);
+		             value != 0.f ? DC->translateString(_("Yes")) : DC->translateString(_("No")), 0, 0, item->textStyle);
 	}
 	else
 	{

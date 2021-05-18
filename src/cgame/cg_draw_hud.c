@@ -135,6 +135,7 @@ void CG_setDefaultHudValues(hudStucture_t *hud)
 	hud->weaponchargebar = CG_getComponent(Ccg_WideX(SCREEN_WIDTH) - 16, SCREEN_HEIGHT - 92, 12, 72, qtrue, STYLE_NORMAL);
 	hud->healthtext      = CG_getComponent(SKILLS_X - 28, SCREEN_HEIGHT - 4, 0, 0, qtrue, STYLE_NORMAL);
 	hud->xptext          = CG_getComponent(SKILLS_X + 28, SCREEN_HEIGHT - 4, 0, 0, qtrue, STYLE_NORMAL);
+	hud->ranktext        = CG_getComponent(0, SCREEN_HEIGHT, 0, 0, qfalse, STYLE_NORMAL);   // disable
 	hud->statsdisplay    = CG_getComponent(SKILL_ICON_X, 0, 0, 0, qtrue, STYLE_NORMAL);
 	hud->weaponicon      = CG_getComponent((Ccg_WideX(SCREEN_WIDTH) - 82), (SCREEN_HEIGHT - 56), 60, 32, qtrue, STYLE_NORMAL);
 	hud->weaponammo      = CG_getComponent(Ccg_WideX(SCREEN_WIDTH) - 22, SCREEN_HEIGHT - 1 * (16 + 2) + 12 - 4, 0, 0, qtrue, STYLE_NORMAL);
@@ -149,6 +150,10 @@ void CG_setDefaultHudValues(hudStucture_t *hud)
 	hud->roundtimer      = CG_getComponent(Ccg_WideX(SCREEN_WIDTH) - 55, SCREEN_HEIGHT - 70, 0, 0, qtrue, STYLE_NORMAL);
 	hud->spawntimer      = CG_getComponent(Ccg_WideX(SCREEN_WIDTH) - 55, SCREEN_HEIGHT - 60, 0, 0, qtrue, STYLE_NORMAL);
 	hud->localtime       = CG_getComponent(Ccg_WideX(SCREEN_WIDTH) - 55, SCREEN_HEIGHT - 60, 0, 0, qtrue, STYLE_NORMAL);
+	hud->votetext        = CG_getComponent(8, 224, 0.22f, 0.22f, qtrue, STYLE_NORMAL);
+	hud->spectatortext   = CG_getComponent(8, 188, 0.22f, 0.22f, qtrue, STYLE_NORMAL);
+	hud->limbotext       = CG_getComponent(8, 164, 0.22f, 0.22f, qtrue, STYLE_NORMAL);
+	hud->followtext      = CG_getComponent(8, 164, 0.22f, 0.22f, qtrue, STYLE_NORMAL);
 }
 
 /*
@@ -548,10 +553,46 @@ static qboolean CG_ParseHUD(int handle)
 			continue;
 		}
 
+		if (!Q_stricmp(token.string, "votetext"))
+		{
+			if (!CG_ParseHudComponent(handle, &temphud.votetext))
+			{
+				return CG_HUD_ParseError(handle, "expected votetext");
+			}
+			continue;
+		}
+
+		if (!Q_stricmp(token.string, "spectatortext"))
+		{
+			if (!CG_ParseHudComponent(handle, &temphud.spectatortext))
+			{
+				return CG_HUD_ParseError(handle, "expected spectatortext");
+			}
+			continue;
+		}
+
+		if (!Q_stricmp(token.string, "limbotext"))
+		{
+			if (!CG_ParseHudComponent(handle, &temphud.limbotext))
+			{
+				return CG_HUD_ParseError(handle, "expected limbotext");
+			}
+			continue;
+		}
+
+		if (!Q_stricmp(token.string, "followtext"))
+		{
+			if (!CG_ParseHudComponent(handle, &temphud.followtext))
+			{
+				return CG_HUD_ParseError(handle, "expected followtext");
+			}
+			continue;
+		}
+
 		return CG_HUD_ParseError(handle, "unexpected token: %s", token.string);
 	}
 
-	hudStucture_t * hud = CG_getHudByNumber(temphud.hudnumber);
+	hudStucture_t *hud = CG_getHudByNumber(temphud.hudnumber);
 
 	if (!hud)
 	{
@@ -560,7 +601,7 @@ static qboolean CG_ParseHUD(int handle)
 	}
 	else
 	{
-		memcpy(hud, &temphud, sizeof(temphud));
+		Com_Memcpy(hud, &temphud, sizeof(temphud));
 		Com_Printf("...properties for hud %i have been updated.\n", temphud.hudnumber);
 	}
 
@@ -739,7 +780,7 @@ static void CG_DrawPlayerStatusHead(hudComponent_t comp)
  * @param[out] clips - the total ammount of ammo in all clips (if using clip)
  * @param[out] akimboammo - the number of ammo left in the second pistol of akimbo (if using akimbo)
  */
-static void CG_PlayerAmmoValue(int *ammo, int *clips, int *akimboammo)
+void CG_PlayerAmmoValue(int *ammo, int *clips, int *akimboammo)
 {
 	centity_t     *cent;
 	playerState_t *ps;
@@ -1259,7 +1300,7 @@ static void CG_DrawPowerUps(rectDef_t rect)
 		CG_DrawPic(rect.x + 9, rect.y + 9, 18, 18, cgs.media.skillPics[BG_ClassSkillForClass((cg_entities[ps->clientNum].currentState.powerups >> PW_OPS_CLASS_1) & 7)]);
 	}
 	else if ((cg.flagIndicator & (1 << PW_REDFLAG) || cg.flagIndicator & (1 << PW_BLUEFLAG)) && (!cgs.clientinfo[cg.clientNum].shoutcaster ||
-	         (cgs.clientinfo[cg.clientNum].shoutcaster && (cg.snap->ps.pm_flags & PMF_FOLLOW))))
+	                                                                                             (cgs.clientinfo[cg.clientNum].shoutcaster && (cg.snap->ps.pm_flags & PMF_FOLLOW))))
 	{
 		// draw objective info icon (if teammates or enemies are carrying one)
 		vec4_t color = { 1.f, 1.f, 1.f, 1.f };
@@ -1580,6 +1621,180 @@ void CG_StatsDebugAddText(const char *text)
 }
 
 /**
+ * @brief CG_GetCompassIcon
+ * @param[in] cent
+ * @param[in] allVoicesChat get all icons voices chat, otherwhise only request icons voices chat (need medic/ammo ...)
+ * @return A valid compass icon handle otherwise 0
+ */
+qhandle_t CG_GetCompassIcon(entityState_t *ent, qboolean drawVoicesChat, qboolean drawFireTeam)
+{
+	centity_t *cent    = &cg_entities[ent->number];
+	qboolean  sameTeam = cg.predictedPlayerState.persistant[PERS_TEAM] == cgs.clientinfo[ent->clientNum].team;
+
+	if (ent->eType == ET_PLAYER)
+	{
+		if (!cgs.clientinfo[ent->clientNum].infoValid)
+		{
+			return 0;
+		}
+
+		if (sameTeam && cgs.clientinfo[ent->clientNum].powerups & ((1 << PW_REDFLAG) | (1 << PW_BLUEFLAG)))
+		{
+			return cgs.media.objectiveShader;
+		}
+		else if (ent->eFlags & EF_DEAD)
+		{
+			if ((cg.predictedPlayerState.stats[STAT_PLAYER_CLASS] == PC_MEDIC && cg.predictedPlayerState.stats[STAT_HEALTH] > 0
+			     && ent->number == ent->clientNum && sameTeam) ||
+			    (!(cg.snap->ps.pm_flags & PMF_FOLLOW) && cgs.clientinfo[cg.clientNum].shoutcaster))
+			{
+				return cgs.media.medicReviveShader;
+			}
+
+			return 0;
+		}
+		else if (sameTeam && cent->voiceChatSpriteTime > cg.time &&
+		         (drawVoicesChat || (cent->voiceChatSprite != cgs.media.voiceChatShader)))
+		{
+			// FIXME: not the best place to reset it
+			if (cgs.clientinfo[ent->clientNum].health <= 0)
+			{
+				// reset
+				cent->voiceChatSpriteTime = cg.time;
+				return 0;
+			}
+
+			return cent->voiceChatSprite;
+		}
+		else if (drawFireTeam && (CG_IsOnSameFireteam(cg.clientNum, ent->clientNum) || cgs.clientinfo[cg.clientNum].shoutcaster))      // draw disguise or default buddy icon
+		{
+			// draw overlapping no-shoot icon if disguised and in same team but draw disguise ennemy on compass as buddy
+			if (ent->powerups & (1 << PW_OPS_DISGUISED) && cg.predictedPlayerState.persistant[PERS_TEAM] == cgs.clientinfo[ent->clientNum].team)
+			{
+				return cgs.media.friendShader;
+			}
+			else
+			{
+				return cgs.media.buddyShader;
+			}
+		}
+	}
+	else if (ent->eType == ET_ITEM)
+	{
+		gitem_t *item;
+
+		item = BG_GetItem(ent->modelindex);
+
+		if (item && item->giType == IT_TEAM)
+		{
+			if ((item->giPowerUp == PW_BLUEFLAG && cg.predictedPlayerState.persistant[PERS_TEAM] == TEAM_AXIS)
+			    || (item->giPowerUp == PW_REDFLAG && cg.predictedPlayerState.persistant[PERS_TEAM] == TEAM_ALLIES))
+			{
+				return cgs.media.objectiveTeamShader;
+			}
+			else
+			{
+				return cgs.media.objectiveEnemyShader;
+			}
+		}
+	}
+	else if (ent->eType == ET_EXPLOSIVE_INDICATOR)
+	{
+		// draw explosives if an engineer
+		if (cg.predictedPlayerState.stats[STAT_PLAYER_CLASS] == PC_ENGINEER ||
+		    (cg.predictedPlayerState.stats[STAT_PLAYER_CLASS] == PC_COVERTOPS && ent->effect1Time == 1))
+		{
+			if (ent->teamNum == 1 && cg.predictedPlayerState.persistant[PERS_TEAM] == TEAM_AXIS)
+			{
+				return 0;
+			}
+			else if (ent->teamNum == 2 && cg.predictedPlayerState.persistant[PERS_TEAM] == TEAM_ALLIES)
+			{
+				return 0;
+			}
+
+			if (cg.predictedPlayerState.stats[STAT_PLAYER_CLASS] == PC_ENGINEER)
+			{
+				return cgs.media.dynamiteHintShader;
+			}
+			else
+			{
+				return cgs.media.satchelchargeHintShader;
+			}
+		}
+	}
+	else if (ent->eType == ET_CONSTRUCTIBLE_INDICATOR)
+	{
+		// draw construction if an engineer
+		if (cg.predictedPlayerState.stats[STAT_PLAYER_CLASS] == PC_ENGINEER)
+		{
+			if (ent->teamNum == 1 && cg.predictedPlayerState.persistant[PERS_TEAM] != TEAM_AXIS)
+			{
+				return 0;
+			}
+			else if (ent->teamNum == 2 && cg.predictedPlayerState.persistant[PERS_TEAM] != TEAM_ALLIES)
+			{
+				return 0;
+			}
+
+			return cg.predictedPlayerState.persistant[PERS_TEAM] == TEAM_AXIS ? cgs.media.pmImageAxisConstruct : cgs.media.pmImageAlliesConstruct;
+		}
+	}
+	else if (ent->eType == ET_TANK_INDICATOR)
+	{
+		if ((ent->teamNum == 1 && cg.predictedPlayerState.persistant[PERS_TEAM] == TEAM_AXIS)
+		    || (ent->teamNum == 2 && cg.predictedPlayerState.persistant[PERS_TEAM] == TEAM_ALLIES))
+		{
+			return cgs.media.escortShader;
+		}
+		else
+		{
+			return cgs.media.destroyShader;
+		}
+	}
+	else if (ent->eType == ET_TANK_INDICATOR_DEAD)
+	{
+		// draw repair if an engineer
+		if (cg.predictedPlayerState.stats[STAT_PLAYER_CLASS] == PC_ENGINEER && (
+				(ent->teamNum == 1 && cg.predictedPlayerState.persistant[PERS_TEAM] == TEAM_AXIS)
+				|| (ent->teamNum == 2 && cg.predictedPlayerState.persistant[PERS_TEAM] == TEAM_ALLIES)))
+		{
+			return cgs.media.buildHintShader;
+		}
+	}
+	else if (ent->eType == ET_TRAP)
+	{
+		if (ent->frame == 0)
+		{
+			return cgs.media.pmImageSpecFlag;
+		}
+		if (ent->frame == 4 && cg.predictedPlayerState.persistant[PERS_TEAM] == TEAM_AXIS)
+		{
+			return cgs.media.pmImageAlliesFlag;
+		}
+		else if (ent->frame == 3 && cg.predictedPlayerState.persistant[PERS_TEAM] == TEAM_ALLIES)
+		{
+			return cgs.media.pmImageAxisFlag;
+		}
+	}
+	//else if (ent->eType == ET_MG42_BARREL)
+	//{
+	//    return cgs.media.mg42HintShader;
+	//}
+	//else if (ent->eType == ET_CABINET_H)
+	//{
+	//	return cgs.media.healthHintShader;
+	//}
+	//else if (ent->eType == ET_CABINET_A)
+	//{
+	//	return cgs.media.ammoHintShader;
+	//}
+	//
+
+	return 0;
+}
+
+/**
  * @brief CG_DrawCompassIcon
  * @param[in] x
  * @param[in] y
@@ -1589,7 +1804,7 @@ void CG_StatsDebugAddText(const char *text)
  * @param[in] dest
  * @param[in] shader
  */
-void CG_DrawCompassIcon(float x, float y, float w, float h, vec3_t origin, vec3_t dest, qhandle_t shader)
+void CG_DrawCompassIcon(float x, float y, float w, float h, vec3_t origin, vec3_t dest, qhandle_t shader, float dstScale, float baseSize)
 {
 	float  angle;
 	vec3_t v1, angles;
@@ -1623,9 +1838,9 @@ void CG_DrawCompassIcon(float x, float y, float w, float h, vec3_t origin, vec3_
 	x = x + ((float)cos(angle) * w);
 	y = y + ((float)sin(angle) * w);
 
-	len = 1 - MIN(1.f, len / 2000.f);
+	len = 1 - MIN(1.f, len / 2000.f * dstScale);
 
-	CG_DrawPic(x - (14 * len + 4) / 2, y - (14 * len + 4) / 2, 14 * len + 8, 14 * len + 8, shader);
+	CG_DrawPic(x - (baseSize * len + 4) / 2, y - (baseSize * len + 4) / 2, baseSize * len + 8, baseSize * len + 8, shader);
 }
 
 /**
@@ -1816,125 +2031,25 @@ static void CG_DrawNewCompass(rectDef_t location)
 	lastangle += anglespeed;
 	CG_DrawRotatedPic(basex + 4, basey + 4, basew - 8, baseh - 8, cgs.media.compass2Shader, lastangle);
 
-	//if( !(cgs.ccFilter & CC_FILTER_REQUESTS) ) {
-	// draw voice chats
+	for (i = 0; i < snap->numEntities; ++i)
 	{
-		centity_t *cent;
+		centity_t *cent = &cg_entities[snap->entities[i].number];
+		qhandle_t icon;
 
-		for (i = 0; i < MAX_CLIENTS; i++)
+		// skip self
+		if (cent->currentState.eType == ET_PLAYER && cent->currentState.clientNum == cg.clientNum)
 		{
-			cent = &cg_entities[i];
-
-			if (cg.predictedPlayerState.clientNum == i || !cgs.clientinfo[i].infoValid ||
-			    (cg.predictedPlayerState.persistant[PERS_TEAM] != cgs.clientinfo[i].team && !cgs.clientinfo[cg.clientNum].shoutcaster))
-			{
-				continue;
-			}
-
-			// also draw revive icons if cent is dead and player is a medic
-			if (cent->voiceChatSpriteTime < cg.time)
-			{
-				continue;
-			}
-
-			// also draw disguise icon or objective icon (if they are carrying one)
-			if (cgs.clientinfo[i].powerups & ((1 << PW_REDFLAG) | (1 << PW_BLUEFLAG) | (1 << PW_OPS_DISGUISED)))
-			{
-				continue;
-			}
-
-			if (cgs.clientinfo[i].health <= 0)
-			{
-				// reset
-				cent->voiceChatSpriteTime = cg.time;
-				continue;
-			}
-
-			CG_DrawCompassIcon(basex, basey, basew, baseh, cg.predictedPlayerState.origin, cent->lerpOrigin, cent->voiceChatSprite);
+			continue;
 		}
-	}
-	//}
 
-	/*if( !(cgs.ccFilter & CC_FILTER_DESTRUCTIONS) ) {
-	    // draw explosives if an engineer
-	    if ( cg.predictedPlayerState.stats[ STAT_PLAYER_CLASS ] == PC_ENGINEER ) {
-	        for ( i = 0; i < snap->numEntities; i++ ) {
-	            centity_t *cent = &cg_entities[ snap->entities[ i ].number ];
+		icon = CG_GetCompassIcon(&snap->entities[i], qfalse, qfalse);
 
-	            if ( cent->currentState.eType != ET_EXPLOSIVE_INDICATOR ) {
-	                continue;
-	            }
-
-	            if ( cent->currentState.teamNum == 1 && cg.predictedPlayerState.persistant[PERS_TEAM] == TEAM_AXIS )
-	                continue;
-	            else if ( cent->currentState.teamNum == 2 && cg.predictedPlayerState.persistant[PERS_TEAM] == TEAM_ALLIES )
-	                continue;
-
-	            CG_DrawCompassIcon( basex, basey, basew, baseh, cg.predictedPlayerState.origin, cent->lerpOrigin, cgs.media.compassDestroyShader );
-	        }
-	    }
-	}*/
-
-	{
-		entityState_t *ent;
-
-		for (i = 0; i < snap->numEntities; i++)
+		if (icon)
 		{
-			ent = &snap->entities[i];
-
-			if (ent->eType != ET_PLAYER)
-			{
-				continue;
-			}
-
-			if (ent->eFlags & EF_DEAD)
-			{
-				qboolean sameTeam = ((cg.predictedPlayerState.persistant[PERS_TEAM] == cgs.clientinfo[ent->clientNum].team) ? qtrue : qfalse);
-
-				if ((cg.predictedPlayerState.stats[STAT_PLAYER_CLASS] == PC_MEDIC && cg.predictedPlayerState.stats[STAT_HEALTH] > 0 && ent->number == ent->clientNum && sameTeam) ||
-				    (!(cg.snap->ps.pm_flags & PMF_FOLLOW) && cgs.clientinfo[cg.clientNum].shoutcaster)) // && !(cgs.ccFilter & CC_FILTER_REQUESTS)
-				{
-					if (!cgs.clientinfo[ent->clientNum].infoValid)
-					{
-						continue;
-					}
-
-					CG_DrawCompassIcon(basex, basey, basew, baseh, cg.predictedPlayerState.origin, ent->pos.trBase, cgs.media.medicReviveShader);
-				}
-
-				continue;
-			}
-
-			if (!cgs.clientinfo[ent->clientNum].infoValid || (cg.predictedPlayerState.persistant[PERS_TEAM] != cgs.clientinfo[ent->clientNum].team && !cgs.clientinfo[cg.clientNum].shoutcaster))
-			{
-				continue;
-			}
-
-			// draw objective icon (if they are carrying one)
-			if (cgs.clientinfo[ent->clientNum].powerups & ((1 << PW_REDFLAG) | (1 << PW_BLUEFLAG)))
-			{
-				CG_DrawCompassIcon(basex, basey, basew, baseh, cg.predictedPlayerState.origin, ent->pos.trBase, cgs.media.objectiveShader);
-			}
-
-			if (!CG_IsOnSameFireteam(cg.clientNum, ent->clientNum) && !cgs.clientinfo[cg.clientNum].shoutcaster)
-			{
-				continue;
-			}
-
-			// draw disguise or default buddy icon
-			if (!cgs.clientinfo[cg.clientNum].shoutcaster)
-			{
-				// draw overlapping no-shoot icon if disguised
-				if (cgs.clientinfo[ent->clientNum].powerups & (1 << PW_OPS_DISGUISED))
-				{
-					CG_DrawCompassIcon(basex, basey, basew, baseh, cg.predictedPlayerState.origin, ent->pos.trBase, cgs.media.friendShader);
-				}
-				CG_DrawCompassIcon(basex, basey, basew, baseh, cg.predictedPlayerState.origin, ent->pos.trBase, cgs.media.buddyShader); //if( !(cgs.ccFilter & CC_FILTER_BUDDIES) ) {
-			}
+			CG_DrawCompassIcon(basex, basey, basew, baseh, cg.predictedPlayerState.origin, cent->lerpOrigin, icon, 1.f, 14);
 		}
 	}
 }
-
 /**
  * @brief CG_DrawStatsDebug
  */
@@ -2211,6 +2326,68 @@ static float CG_DrawFPS(float y)
 }
 
 /**
+ * @brief CG_SpawnTimerText red colored spawn time text in reinforcement time HUD element.
+ * @return red colored text or NULL when its not supposed to be rendered
+*/
+static char *CG_SpawnTimerText()
+{
+	int msec = (cgs.timelimit * 60000.f) - (cg.time - cgs.levelStartTime);
+	int seconds;
+	int secondsThen;
+
+	if (cg_spawnTimer_set.integer != -1 && cgs.gamestate == GS_PLAYING && !cgs.clientinfo[cg.clientNum].shoutcaster)
+	{
+		if (cgs.clientinfo[cg.clientNum].team != TEAM_SPECTATOR || (cg.snap->ps.pm_flags & PMF_FOLLOW))
+		{
+			int period = cg_spawnTimer_period.integer > 0 ? cg_spawnTimer_period.integer : (cgs.clientinfo[cg.snap->ps.clientNum].team == TEAM_AXIS ? cg_bluelimbotime.integer / 1000 : cg_redlimbotime.integer / 1000);
+			if (period > 0) // prevent division by 0 for weird cases like limbtotime < 1000
+			{
+				seconds     = msec / 1000;
+				secondsThen = ((cgs.timelimit * 60000.f) - cg_spawnTimer_set.integer) / 1000;
+				return va("^1%i", period + (seconds - secondsThen) % period);
+			}
+		}
+	}
+	else if (cg_spawnTimer_set.integer != -1 && cg_spawnTimer_period.integer > 0 && cgs.gamestate != GS_PLAYING)
+	{
+		// We are not playing and the timer is set so reset/disable it
+		// this happens for example when custom period is set by timerSet and map is restarted or changed
+		trap_Cvar_Set("cg_spawnTimer_set", "-1");
+	}
+	return NULL;
+}
+
+/**
+ * @brief CG_TimerWarmupString string to be drawn in reinforcement time hud element
+ * If gametype is Last Man Standing it returns just WARMUP, otherwise it returns colored limbotime periods:
+ * If player or following player is axis, then it returns red allies limbotime and blue axis limbotime,
+ * for allies or in freecam it returns red axis limbotime and blue allies limbotime.
+ * @return
+*/
+static char *CG_TimerWarmupString()
+{
+	if (cgs.gametype == GT_WOLF_LMS)
+	{
+		return va("^7%s", CG_TranslateString("WARMUP")); // don't draw reinforcement time in warmup mode for LMS
+	}
+	else                                              // draw limbotime periods otherwise
+	{
+		int limbotimeOwn, limbotimeEnemy;
+		if (cgs.clientinfo[cg.snap->ps.clientNum].team == TEAM_AXIS)
+		{
+			limbotimeOwn   = cg_redlimbotime.integer;
+			limbotimeEnemy = cg_bluelimbotime.integer;
+		}
+		else
+		{
+			limbotimeOwn   = cg_bluelimbotime.integer;
+			limbotimeEnemy = cg_redlimbotime.integer;
+		}
+		return va("^1%2.0i ^$%2.0i", limbotimeEnemy / 1000, limbotimeOwn / 1000);
+	}
+}
+
+/**
  * @brief CG_DrawTimersAlt
  * @param[in] respawn
  * @param[in] spawntimer
@@ -2225,7 +2402,6 @@ static void CG_DrawTimersAlt(rectDef_t *respawn, rectDef_t *spawntimer, rectDef_
 	vec4_t  color = { 0.625f, 0.625f, 0.6f, 1.0f };
 	int     tens;
 	int     msec    = (cgs.timelimit * 60000.f) - (cg.time - cgs.levelStartTime); // 60.f * 1000.f
-	int     secondsThen;
 	int     seconds = msec / 1000;
 	int     mins    = seconds / 60;
 
@@ -2235,7 +2411,7 @@ static void CG_DrawTimersAlt(rectDef_t *respawn, rectDef_t *spawntimer, rectDef_
 
 	if (cgs.gamestate != GS_PLAYING)
 	{
-		s        = va("^7%s", CG_TranslateString("WARMUP")); // don't draw reinforcement time in warmup mode // ^*
+		s        = CG_TimerWarmupString();
 		color[3] = fabs(sin(cg.time * 0.002));
 	}
 	else if (msec < 0 && cgs.timelimit > 0.0f)
@@ -2265,8 +2441,8 @@ static void CG_DrawTimersAlt(rectDef_t *respawn, rectDef_t *spawntimer, rectDef_
 			int  reinfTime  = CG_CalculateReinfTime(qfalse);
 			char *teamColor = (cgs.clientinfo[cg.clientNum].shoutcaster ? (cgs.clientinfo[cg.snap->ps.clientNum].team == TEAM_AXIS ? "^1" : "^$") : "^F");
 
-			rt = va("%s%d%s", (reinfTime <= 2 && cgs.clientinfo[cg.clientNum].health == 0 &&
-			                   !(cg.snap->ps.pm_flags & PMF_FOLLOW)) ? "^3" : teamColor, reinfTime, ((cgs.timelimit <= 0.0f) ? "" : " "));
+			rt = va("%s%d ", (reinfTime <= 2 && cgs.clientinfo[cg.clientNum].health == 0 &&
+			                  !(cg.snap->ps.pm_flags & PMF_FOLLOW)) ? "^1" : teamColor, reinfTime);
 		}
 		else
 		{
@@ -2288,21 +2464,12 @@ static void CG_DrawTimersAlt(rectDef_t *respawn, rectDef_t *spawntimer, rectDef_
 	CG_Text_Paint_Ext(respawn->x - w, respawn->y, 0.19f, 0.19f, color, s, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont1);
 
 	// spawntimer
-	if (cg_spawnTimer_set.integer != -1 && cg_spawnTimer_period.integer > 0 && cgs.gamestate == GS_PLAYING && !cgs.clientinfo[cg.clientNum].shoutcaster)
+	rt = CG_SpawnTimerText();
+	if (rt)
 	{
-		if (cgs.clientinfo[cg.clientNum].team != TEAM_SPECTATOR || (cg.snap->ps.pm_flags & PMF_FOLLOW))
-		{
-			seconds     = msec / 1000;
-			secondsThen = ((cgs.timelimit * 60000.f) - cg_spawnTimer_set.integer) / 1000;
-			s           = va("^1%i ", cg_spawnTimer_period.integer + (seconds - secondsThen) % cg_spawnTimer_period.integer);
-			w           = CG_Text_Width_Ext(s, 0.19f, 0, &cgs.media.limboFont1) - ((msec < 0 && cgs.timelimit > 0.0f) ? CG_Text_Width_Ext("00:00", 0.19f, 0, &cgs.media.limboFont1) : 0);
-			CG_Text_Paint_Ext(spawntimer->x - w, spawntimer->y, 0.19f, 0.19f, color, s, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont1);
-		}
-	}
-	else if (cg_spawnTimer_set.integer != -1 && cg_spawnTimer_period.integer > 0 && cgs.gamestate != GS_PLAYING)
-	{
-		//We are not playing and the timer is set so reset/disable it
-		trap_Cvar_Set("cg_spawnTimer_set", "-1");
+		s = va("%s ", rt);
+		w = CG_Text_Width_Ext(s, 0.19f, 0, &cgs.media.limboFont1) - ((msec < 0 && cgs.timelimit > 0.0f) ? CG_Text_Width_Ext("00:00", 0.19f, 0, &cgs.media.limboFont1) : 0);
+		CG_Text_Paint_Ext(spawntimer->x - w, spawntimer->y, 0.19f, 0.19f, color, s, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont1);
 	}
 	// end spawntimer
 
@@ -2343,6 +2510,7 @@ static void CG_DrawTimersAlt(rectDef_t *respawn, rectDef_t *spawntimer, rectDef_
 				s = va("%02i:%02i", time.tm_hour, time.tm_min);
 			}
 		}
+		color[3] = 1.f; // don't blink local time during warmup
 		CG_Text_Paint_Ext(localtime->x, localtime->y, 0.19f, 0.19f, color, s, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont1);
 	}
 }
@@ -2359,7 +2527,6 @@ static float CG_DrawTimerNormal(float y)
 	int    w, w2;
 	int    tens;
 	int    x;
-	int    secondsThen;
 	int    msec    = (cgs.timelimit * 60000.f) - (cg.time - cgs.levelStartTime); // 60.f * 1000.f
 	int    seconds = msec / 1000;
 	int    mins    = seconds / 60;
@@ -2370,7 +2537,7 @@ static float CG_DrawTimerNormal(float y)
 
 	if (cgs.gamestate != GS_PLAYING)
 	{
-		s        = va("^7%s", CG_TranslateString("WARMUP")); // don't draw reinforcement time in warmup mode // ^*
+		s        = CG_TimerWarmupString();
 		color[3] = fabs(sin(cg.time * 0.002));
 	}
 	else if (msec < 0 && cgs.timelimit > 0.0f)
@@ -2393,7 +2560,7 @@ static float CG_DrawTimerNormal(float y)
 			char *c        = (cgs.clientinfo[cg.clientNum].shoutcaster ? (cgs.clientinfo[cg.snap->ps.clientNum].team == TEAM_AXIS ? "^1" : "^$") : "^F");
 
 			rt = va("%s%s%d", (reinfTime <= 2 && cgs.clientinfo[cg.clientNum].health == 0 &&
-			                   !(cg.snap->ps.pm_flags & PMF_FOLLOW)) ? "^3" : c, ((cgs.timelimit <= 0.0f) ? "" : " "), reinfTime);
+			                   !(cg.snap->ps.pm_flags & PMF_FOLLOW)) ? "^1" : c, ((cgs.timelimit <= 0.0f) ? "" : " "), reinfTime);
 		}
 		else
 		{
@@ -2413,19 +2580,10 @@ static float CG_DrawTimerNormal(float y)
 	}
 
 	// spawntimer
-	if (cg_spawnTimer_set.integer != -1 && cg_spawnTimer_period.integer > 0 && cgs.gamestate == GS_PLAYING && !cgs.clientinfo[cg.clientNum].shoutcaster)
+	rt = CG_SpawnTimerText();
+	if (rt)
 	{
-		if (cgs.clientinfo[cg.clientNum].team != TEAM_SPECTATOR || (cg.snap->ps.pm_flags & PMF_FOLLOW))
-		{
-			seconds     = msec / 1000;
-			secondsThen = ((cgs.timelimit * 60000.f) - cg_spawnTimer_set.integer) / 1000;
-			s           = va("^1%i %s", cg_spawnTimer_period.integer + (seconds - secondsThen) % cg_spawnTimer_period.integer, s);
-		}
-	}
-	else if (cg_spawnTimer_set.integer != -1 && cg_spawnTimer_period.integer > 0 && cgs.gamestate != GS_PLAYING)
-	{
-		// we are not playing and the timer is set so reset/disable it
-		trap_Cvar_Set("cg_spawnTimer_set", "-1");
+		s = va("%s%s%s", rt, (cgs.timelimit <= 0.0f) ? " " : "", s);
 	}
 
 	w  = CG_Text_Width_Ext(s, 0.19f, 0, &cgs.media.limboFont1);
@@ -2987,6 +3145,10 @@ void CG_Hud_Setup(void)
 	hud1.roundtimer      = CG_getComponent(100, SCREEN_HEIGHT - 12, 0, 0, qtrue, STYLE_NORMAL);
 	hud1.spawntimer      = CG_getComponent(100, SCREEN_HEIGHT - 2, 0, 0, qtrue, STYLE_NORMAL);
 	hud1.localtime       = CG_getComponent(100, SCREEN_HEIGHT - 2, 0, 0, qtrue, STYLE_NORMAL);
+	hud1.votetext        = CG_getComponent(8, 224, 0.22f, 0.22f, qtrue, STYLE_NORMAL);
+	hud1.spectatortext   = CG_getComponent(8, 188, 0.22f, 0.22f, qtrue, STYLE_NORMAL);
+	hud1.limbotext       = CG_getComponent(8, 164, 0.22f, 0.22f, qtrue, STYLE_NORMAL);
+	hud1.followtext      = CG_getComponent(8, 164, 0.22f, 0.22f, qtrue, STYLE_NORMAL);
 	CG_addHudToList(&hud1);
 
 	// Hud2
@@ -3013,6 +3175,10 @@ void CG_Hud_Setup(void)
 	hud2.roundtimer      = CG_getComponent(Ccg_WideX(SCREEN_WIDTH) - 55, SCREEN_HEIGHT - 70, 0, 0, qtrue, STYLE_NORMAL);
 	hud2.spawntimer      = CG_getComponent(Ccg_WideX(SCREEN_WIDTH) - 55, SCREEN_HEIGHT - 60, 0, 0, qtrue, STYLE_NORMAL);
 	hud2.localtime       = CG_getComponent(Ccg_WideX(SCREEN_WIDTH) - 55, SCREEN_HEIGHT - 60, 0, 0, qtrue, STYLE_NORMAL);
+	hud2.votetext        = CG_getComponent(8, 224, 0.22f, 0.22f, qtrue, STYLE_NORMAL);
+	hud2.spectatortext   = CG_getComponent(8, 188, 0.22f, 0.22f, qtrue, STYLE_NORMAL);
+	hud2.limbotext       = CG_getComponent(8, 164, 0.22f, 0.22f, qtrue, STYLE_NORMAL);
+	hud2.followtext      = CG_getComponent(8, 164, 0.22f, 0.22f, qtrue, STYLE_NORMAL);
 	CG_addHudToList(&hud2);
 
 	// Read the hud files
@@ -3044,6 +3210,7 @@ static void CG_PrintHud(hudStucture_t *hud)
 	CG_PrintHudComponent("weaponchargebar", hud->weaponchargebar);
 	CG_PrintHudComponent("healthtext", hud->healthtext);
 	CG_PrintHudComponent("xptext", hud->xptext);
+	CG_PrintHudComponent("ranktext", hud->ranktext);
 	CG_PrintHudComponent("statsdisplay", hud->statsdisplay);
 	CG_PrintHudComponent("weaponicon", hud->weaponicon);
 	CG_PrintHudComponent("weaponammo", hud->weaponammo);
@@ -3054,6 +3221,14 @@ static void CG_PrintHud(hudStucture_t *hud)
 	CG_PrintHudComponent("cursorhint", hud->cursorhint);
 	CG_PrintHudComponent("weaponstability", hud->weaponstability);
 	CG_PrintHudComponent("livesleft", hud->livesleft);
+	CG_PrintHudComponent("reinforcement", hud->reinforcement);
+	CG_PrintHudComponent("roundtimer", hud->roundtimer);
+	CG_PrintHudComponent("spawntimer", hud->spawntimer);
+	CG_PrintHudComponent("localtime", hud->localtime);
+	CG_PrintHudComponent("votetext", hud->votetext);
+	CG_PrintHudComponent("spectatortext", hud->spectatortext);
+	CG_PrintHudComponent("limbotext", hud->limbotext);
+	CG_PrintHudComponent("followtext", hud->followtext);
 }
 #endif
 
@@ -3140,7 +3315,17 @@ void CG_DrawGlobalHud(void)
 		return;
 	}
 #endif
-	CG_DrawNewCompass(activehud->compas.location);
+
+	if (cgs.clientinfo[cg.clientNum].shoutcaster)
+	{
+		CG_DrawMinimap();
+		CG_DrawShoutcastPowerups();
+		return;
+	}
+	else
+	{
+		CG_DrawNewCompass(activehud->compas.location);
+	}
 
 	if (activehud->powerups.visible)
 	{
@@ -3154,6 +3339,12 @@ void CG_DrawGlobalHud(void)
 void CG_DrawUpperRight(void)
 {
 	float y = 152; // 20 + 100 + 32;
+
+	if (cgs.clientinfo[cg.clientNum].shoutcaster)
+	{
+		CG_DrawShoutcastTimer();
+		return;
+	}
 
 	if (cg.snap->ps.persistant[PERS_TEAM] != TEAM_SPECTATOR)
 	{

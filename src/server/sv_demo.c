@@ -849,7 +849,7 @@ void SV_DemoAutoDemoRecord(void)
 
 	// print a message
 	Com_Printf("DEMO: automatic recording server-side demo to: %s/svdemos/%s.%s%d\n", strlen(Cvar_VariableString("fs_game")) ? Cvar_VariableString("fs_game") : BASEGAME, demoname, SVDEMOEXT, PROTOCOL_VERSION);
-	SV_SendServerCommand( NULL, "chat \"^3DEMO: automatic recording server-side demo to: %s.%s%d.\"", demoname, SVDEMOEXT, PROTOCOL_VERSION );
+	SV_SendServerCommand(NULL, "chat \"^3DEMO: automatic recording server-side demo to: %s.%s%d.\"", demoname, SVDEMOEXT, PROTOCOL_VERSION);
 	// launch the demo recording
 	Cbuf_AddText(va("demo_record %s\n", demoname));
 }
@@ -872,7 +872,7 @@ static void SV_DemoStopPlayback(void)
 			SV_SetConfigstring(CS_PLAYERS + i, NULL);
 		}
 	}
-	
+
 	// Close demo file after playback
 	FS_FCloseFile(sv.demoFile);
 	sv.demoState = DS_NONE;
@@ -915,7 +915,7 @@ static void SV_DemoStopPlayback(void)
  * @brief Call this to abort the demo play by error.
  * @param [in]
  */
-static void SV_DemoPlaybackError(const char *message)
+static void _attribute((noreturn)) SV_DemoPlaybackError(const char *message)
 {
 	// FIXME: reset static vars?!
 
@@ -1211,7 +1211,7 @@ static void SV_DemoStartPlayback(void)
 	Cvar_SetValue("sv_democlients", clients); // Note: we need SV_Startup() to NOT use SV_ChangeMaxClients for this to work without crashing when changing fs_game
 
 	// FIXME: omnibot - this bot stuff isn't tested well (but better than before)
-	// disable bots and ensure they don't connect again	
+	// disable bots and ensure they don't connect again
 	if (Cvar_Get("omnibot_enable", "0", 0)->integer > 0) // FIXME: and/or check for bot player count, omnibot_enable is latched !!!
 	{
 
@@ -1428,7 +1428,7 @@ static void SV_DemoReadConfigString(msg_t *msg)
 	int  num;
 
 	//num = MSG_ReadLong(msg, MAX_CONFIGSTRINGS); FIXME: doesn't work, dunno why, but it would be better than a string to store a long int!
-	num          = atoi(MSG_ReadString(msg));
+	num          = Q_atoi(MSG_ReadString(msg));
 	configstring = MSG_ReadString(msg);
 
 	if (num < CS_PLAYERS + sv_democlients->integer || num >= CS_PLAYERS + sv_maxclients->integer)
@@ -1466,8 +1466,8 @@ static void SV_DemoReadClientConfigString(msg_t *msg)
 
 		client = &svs.clients[num];
 
-		svdoldteam = strlen(Info_ValueForKey(sv.configstrings[CS_PLAYERS + num], "t")) ? atoi(Info_ValueForKey(sv.configstrings[CS_PLAYERS + num], "t")) : -1; // affect the new team if detected, else if an empty string is returned, just set -1 (will allow us to detect that there's really no team change instead of having 0 which is TEAM_FREE)
-		svdnewteam = strlen(Info_ValueForKey(configstring, "t")) ? atoi(Info_ValueForKey(configstring, "t")) : -1;
+		svdoldteam = strlen(Info_ValueForKey(sv.configstrings[CS_PLAYERS + num], "t")) ? Q_atoi(Info_ValueForKey(sv.configstrings[CS_PLAYERS + num], "t")) : -1; // affect the new team if detected, else if an empty string is returned, just set -1 (will allow us to detect that there's really no team change instead of having 0 which is TEAM_FREE)
+		svdnewteam = strlen(Info_ValueForKey(configstring, "t")) ? Q_atoi(Info_ValueForKey(configstring, "t")) : -1;
 
 		// Set the client configstring (using a standard Q3 function)
 		SV_SetConfigstring(CS_PLAYERS + num, configstring);
@@ -1829,6 +1829,8 @@ read_next_demo_frame: // used to read another whole demo frame
 	{
 read_next_demo_event: // used to read next demo event
 
+		MSG_BeginReading(&msg);
+
 		// Get a message
 		r = FS_Read(&msg.cursize, 4, sv.demoFile);
 
@@ -1903,7 +1905,7 @@ read_next_demo_event: // used to read next demo event
 			    break;
 			*/
 			case -1: // no more chars in msg FIXME: inspect!
-				Com_DPrintf("SV_DemoReadFrame: no chars [%i %i:%i]", cmd, msg.readcount, msg.cursize);
+				Com_DPrintf("SV_DemoReadFrame: no chars [%i %i:%i]\n", cmd, msg.readcount, msg.cursize);
 				return;
 			case demo_endFrame:     // end of the frame - players and entities game status update: we commit every demo entity to the server, update the server time, then release the demo frame reading here to the next server (and demo) frame
 				Com_DPrintf(" END OF FRAME \n");

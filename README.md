@@ -1,4 +1,4 @@
-ET: Legacy [![Travis Status](https://travis-ci.org/etlegacy/etlegacy.svg?branch=master)](https://travis-ci.org/etlegacy/etlegacy) [![AppVeyor status](https://ci.appveyor.com/api/projects/status/468s0285u3w4vfom/branch/master?svg=true)](https://ci.appveyor.com/project/rmarquis/etlegacy/branch/master) [![Analysis Status](https://scan.coverity.com/projects/1160/badge.svg)](https://scan.coverity.com/projects/1160) ![Code scanning](https://github.com/etlegacy/etlegacy/workflows/Code%20scanning%20-%20action/badge.svg) [![chat](https://img.shields.io/discord/260750790203932672.svg?logo=discord)](https://discord.gg/UBAZFys)
+ET: Legacy [![Travis Status](https://travis-ci.org/etlegacy/etlegacy.svg?branch=master)](https://travis-ci.org/etlegacy/etlegacy) [![AppVeyor status](https://ci.appveyor.com/api/projects/status/468s0285u3w4vfom/branch/master?svg=true)](https://ci.appveyor.com/project/rmarquis/etlegacy/branch/master) [![Analysis Status](https://scan.coverity.com/projects/1160/badge.svg)](https://scan.coverity.com/projects/1160) ![CodeQL](https://github.com/etlegacy/etlegacy/workflows/CodeQL/badge.svg) [![chat](https://img.shields.io/discord/260750790203932672.svg?logo=discord)](https://discord.gg/UBAZFys)
 ==========
 
 *A second breath of life for Wolfenstein: Enemy Territory*
@@ -9,9 +9,9 @@ ET: Legacy [![Travis Status](https://travis-ci.org/etlegacy/etlegacy.svg?branch=
 * Development: [https://github.com/etlegacy/etlegacy](https://github.com/etlegacy/etlegacy)
 * Assets Repository: [https://drive.google.com](https://drive.google.com/drive/folders/0Bw7Yu-pqzcSaLXEtVEVjZF82UEU)
 * Documentation: [https://etlegacy.readthedocs.io/](https://etlegacy.readthedocs.io/)
-* Legacy Lua API: [http://legacy-lua-api.readthedocs.io](http://legacy-lua-api.readthedocs.io)
-* Translation: [https://www.transifex.com/projects/p/etlegacy/](https://www.transifex.com/projects/p/etlegacy/)
-* Contact: [\#etlegacy](http://webchat.freenode.net/?channels=#etlegacy) on irc.freenode.net and [etlegacy/#etlegacy](https://discordapp.com/channels/260750790203932672/346956915814957067) on Discord.
+* Lua API: [https://etlegacy-lua-docs.readthedocs.io](https://etlegacy-lua-docs.readthedocs.io)
+* Translation: [https://www.transifex.com/etlegacy/etlegacy](https://www.transifex.com/etlegacy/etlegacy)
+* Contact: [\#etlegacy](https://webchat.freenode.net/?channels=#etlegacy) on irc.freenode.net and [etlegacy/#etlegacy](https://discordapp.com/channels/260750790203932672/346956915814957067) on Discord.
 
 ## INTRODUCTION
 
@@ -89,7 +89,7 @@ section for more details.
 
 Grab info about current lib versions from our [Libs Changelog](https://github.com/etlegacy/etlegacy/wiki/Libs-Changelog) wiki page.
 
-To get the latest source code install [git](http://git-scm.com/) and
+To get the latest source code install [git](https://git-scm.com/) and
 clone our repository hosted at [Github.com](https://github.com/etlegacy/etlegacy):
 
     $ git clone git://github.com/etlegacy/etlegacy.git
@@ -179,8 +179,8 @@ By default, MinGW name is set to **`i686-w64-mingw32`**. You may have to change 
 
 Install:
 
-  1. [Visual Studio Community](http://www.visualstudio.com/) with the _Desktop Development with C++_ workload
-  2. [CMake](http://www.cmake.org/) and make sure it is added to your system PATH
+  1. [Visual Studio Community](https://visualstudio.microsoft.com/) with the _Desktop Development with C++_ workload
+  2. [CMake](https://cmake.org/) and make sure it is added to your system PATH
 
 * option A: **easybuild**
 
@@ -224,11 +224,11 @@ Install:
 1. Xcode:
  * At least a recent Version of Xcode Command Line Tools (Terminal -> `xcode-select --install`)
  * or a complete Xcode IDE (through App Store or https://developer.apple.com/xcode/downloads/)
-2. Homebrew (http://brew.sh/)
+2. Homebrew (https://brew.sh/)
 
 Then brew the following packages in the terminal app:
 
-    $ brew cask install xquartz
+    $ brew install --cask xquartz
     $ brew install gnu-sed cmake glew sdl2 minizip jpeg-turbo curl lua libogg libvorbis theora freetype libpng sqlite openal-soft autoconf nasm automake libtool
 
 Depending on what brew version you're using (mostly older ones), you have to specify `brew install --universal` to get both 32bit and 64bit libs. If it throws an error, just use the command listed above. Although your system curl library supports both architectures, you also need to install its headers.
@@ -272,7 +272,7 @@ Be sure to set the CMake variables (see above) beforehand.
 **NOTES**:
 
   * In the legacy mod folder, the cgame_mac and ui_mac files are redundant since they are in the 
-  mod .pk3 and will be extracted at runtime, so you can delete those. The client is named etl.app
+  mod .pk3 and will be extracted at runtime, so you can delete those. The client is named "ET Legacy.app"
   (and can safely be renamed), while the dedicated server is just a command-line binary named "etlded".
 
 
@@ -356,7 +356,7 @@ Copyright (C) 2012-2020 ET:Legacy Team <mail@etlegacy.com>
   A PARTICULAR PURPOSE.  See the GNU General Public License for more details.
 
   You should have received a copy of the GNU General Public License along with
-  ET: Legacy (see COPYING.txt). If not, see <http://www.gnu.org/licenses/>.
+  ET: Legacy (see COPYING.txt). If not, see <https://www.gnu.org/licenses/>.
 
   ADDITIONAL TERMS:  The Wolfenstein: Enemy Territory GPL Source Code is also
   subject to certain additional terms. You should have received a copy of these

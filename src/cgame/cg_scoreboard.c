@@ -79,9 +79,9 @@ WM_DrawObjectives
  * @param[in] clientNum
  * @return
  */
-static qboolean CG_DrawFlag(float x, float y, float fade, int clientNum)
+qboolean CG_DrawFlag(float x, float y, float fade, int clientNum)
 {
-	int client_flag = atoi(Info_ValueForKey(CG_ConfigString(clientNum + CS_PLAYERS), "u"));  // uci
+	int client_flag = Q_atoi(Info_ValueForKey(CG_ConfigString(clientNum + CS_PLAYERS), "u"));  // uci
 
 	if (client_flag < MAX_COUNTRY_NUM)
 	{
@@ -115,6 +115,7 @@ static qboolean CG_DrawFlag(float x, float y, float fade, int clientNum)
 int WM_DrawObjectives(int x, int y, int width, float fade)
 {
 	const char *s;
+	const char *t;
 
 	if (cg.snap->ps.pm_type == PM_INTERMISSION)
 	{
@@ -126,9 +127,32 @@ int WM_DrawObjectives(int x, int y, int width, float fade)
 
 		const char *buf;
 		qhandle_t  *flagshader = NULL, *nameshader = NULL;
-		int        rows = 8;
+		int        baseRows    = 8; // base number of rows for Y coordinate calculations
+		int        currentRows = 8; // current number of rows for Y coordinate calculations
 
-		y += 16 * (rows - 1);
+		// Without scaling, flags are drawn at 210x136 size
+		// and text at 127x64.
+		float flagSizeX = 210.0f;
+		float flagSizeY = 136.0f;
+		float textSizeX = 127.0f;
+		float textSizeY = 64.0f;
+		float scale     = 1.0f;
+		float flagX1;
+		float flagX2;
+
+		if (cg.teamPlayers[TEAM_ALLIES] > 8 || cg.teamPlayers[TEAM_AXIS] > 8)
+		{
+			// teams might not be balanced, so pick the team with more players
+			currentRows = cg.teamPlayers[TEAM_ALLIES] > cg.teamPlayers[TEAM_AXIS] ? cg.teamPlayers[TEAM_ALLIES] : cg.teamPlayers[TEAM_AXIS];
+
+			// only consider up to 16 players per team
+			if (currentRows > 16)
+			{
+				currentRows = 16;
+			}
+		}
+
+		y += 16 * (baseRows - 1);
 
 		s   = CG_ConfigString(CS_MULTI_MAPWINNER);
 		buf = Info_ValueForKey(s, "w");
@@ -143,11 +167,11 @@ int WM_DrawObjectives(int x, int y, int width, float fade)
 		}
 #endif
 
-		if (atoi(buf) == -1)
+		if (Q_atoi(buf) == -1)
 		{
 			// "ITS A TIE!";
 		}
-		else if (atoi(buf))
+		else if (Q_atoi(buf))
 		{
 			// "ALLIES";
 
@@ -182,23 +206,48 @@ int WM_DrawObjectives(int x, int y, int width, float fade)
 			nameshader = &textAxis;
 		}
 
-		y += 16 * ((rows - 2) / 2);
+		y += 16 * ((baseRows - 2) / 2);
+
+		// If a team has more than 12 players, start scaling down flag sizes.
+		// Row height at this point is 12.
+		if (currentRows > 12)
+		{
+			int i;
+
+			for (i = 13; i <= currentRows; i++)
+			{
+				scale      = (flagSizeY - 12) / flagSizeY;
+				flagSizeX *= scale;
+				flagSizeY *= scale;
+				textSizeX *= scale;
+				textSizeY *= scale;
+
+				y -= 12;
+			}
+		}
+
+		flagX1 = SCREEN_WIDTH / 2 + cgs.wideXoffset - 5 - (flagSizeX + cgs.wideXoffset);      // left flag
+		flagX2 = SCREEN_WIDTH / 2 + 5;
 
 		if (flagshader)
-		{
-			CG_DrawPic(100 + cgs.wideXoffset, 10, 210, 136, *flagshader);
-			CG_DrawPic(325 + cgs.wideXoffset, 10, 210, 136, *flagshader);
+		{                                              // right flag
+			CG_DrawPic(flagX1 + cgs.wideXoffset, 10, flagSizeX, flagSizeY, *flagshader);
+			CG_DrawPic(flagX2 + cgs.wideXoffset, 10, flagSizeX, flagSizeY, *flagshader);
 		}
 
 		if (nameshader)
 		{
+			float textX1 = flagX1 + (flagSizeX * 0.5f) - (textSizeX * 0.5f);                            // left flag text
+			float textX2 = flagX2 + (flagSizeX * 0.5f) - (textSizeX * 0.5f);                            // right flag text
+			float textY  = 10 + (flagSizeY * 0.5f) - (textSizeY * 0.5f);
+
 			if (!textWin)
 			{
 				textWin = trap_R_RegisterShaderNoMip("ui/assets/portraits/text_win.tga");
 			}
 
-			CG_DrawPic(140 + cgs.wideXoffset, 50, 127, 64, *nameshader);
-			CG_DrawPic(365 + cgs.wideXoffset, 50, 127, 64, textWin);
+			CG_DrawPic(textX1 + cgs.wideXoffset, textY, textSizeX, textSizeY, *nameshader);
+			CG_DrawPic(textX2 + cgs.wideXoffset, textY, textSizeX, textSizeY, textWin);
 		}
 		return y;
 	}
@@ -207,17 +256,8 @@ int WM_DrawObjectives(int x, int y, int width, float fade)
 	{
 		int msec, mins, seconds, tens, w;
 
-		CG_FillRect(x - 5, y - 2, width + 5, 21, SB_bg);
-
-		if (CG_ConfigString(CS_CONFIGNAME)[0])
-		{
-			CG_FillRect(x - 5, y + 19, width + 5, 18, SB_bg);
-			CG_DrawRect_FixedBorder(x - 5, y - 2, width + 5, 40, 1, SB_border);
-		}
-		else
-		{
-			CG_DrawRect_FixedBorder(x - 5, y - 2, width + 5, 21, 1, SB_border);
-		}
+		CG_FillRect(x - 5, y - 2, width + 5, 34, SB_bg);
+		CG_DrawRect_FixedBorder(x - 5, y - 2, width + 5, 34, 1, SB_border);
 
 		y += 13;
 
@@ -254,6 +294,26 @@ int WM_DrawObjectives(int x, int y, int width, float fade)
 		else
 		{
 			s = va("%s   ^7%2.f:%i%i", CG_TranslateString("MISSION TIME:"), (float)mins, tens, seconds);
+			w = CG_Text_Width_Ext(s, 0.25f, 0, FONT_HEADER);
+
+			// time limit
+			if (cgs.timelimit > 0.0f)
+			{
+				msec = (int)(cgs.timelimit * 60000.f);
+
+				seconds  = msec / 1000;
+				mins     = seconds / 60;
+				seconds -= mins * 60;
+				tens     = seconds / 10;
+				seconds -= tens * 10;
+			}
+			else
+			{
+				msec = mins = tens = seconds = 0;
+			}
+
+			t = va(" / %2.f:%i%i", (float)mins, tens, seconds);
+			CG_Text_Paint_Ext(x + w, y, 0.19f, 0.19f, SB_text, t, 0, 0, 0, FONT_HEADER);
 		}
 
 		CG_Text_Paint_Ext(x, y, 0.25f, 0.25f, SB_text, s, 0, 0, 0, FONT_HEADER);
@@ -303,52 +363,56 @@ int WM_DrawObjectives(int x, int y, int width, float fade)
 				else
 				{
 					s = va("%s   %s%i", CG_TranslateString("REINFORCE TIME:"), (seconds <= 2 &&
-					                                                            cgs.clientinfo[cg.clientNum].health == 0 && !(cg.snap->ps.pm_flags & PMF_FOLLOW)) ? "^3" : "^F", seconds);
+					                                                            cgs.clientinfo[cg.clientNum].health == 0 && !(cg.snap->ps.pm_flags & PMF_FOLLOW)) ? "^1" : "^F", seconds);
 				}
 				CG_Text_Paint_Ext(SCREEN_WIDTH - 20 - CG_Text_Width_Ext(s, 0.25f, 0, FONT_HEADER) + cgs.wideXoffset, y, 0.25f, 0.25f, SB_text, s, 0, 0, 0, FONT_HEADER);
 			}
 		}
 
-		// TODO: handle missing case ?
 		switch (cgs.gametype)
 		{
 		case GT_WOLF_STOPWATCH:
 			s = va("%s %i", CG_TranslateString("STOPWATCH ROUND"), cgs.currentRound + 1);
-			w = CG_Text_Width_Ext(s, 0.25f, 0, FONT_HEADER);
-
-			CG_Text_Paint_Ext(x + 300 - w * 0.5f, y, 0.25f, 0.25f, SB_text, s, 0, 0, 0, FONT_HEADER);
 			break;
 		case GT_WOLF_LMS:
 			s = va("%s %i  %s %i-%i", CG_TranslateString("ROUND"), cgs.currentRound + 1, CG_TranslateString("SCORE"), cg.teamWonRounds[1], cg.teamWonRounds[0]);
-			w = CG_Text_Width_Ext(s, 0.25f, 0, FONT_HEADER);
-
-			CG_Text_Paint_Ext(x + 300 - w * 0.5f, y, 0.25f, 0.25f, SB_text, s, 0, 0, 0, FONT_HEADER);
 			break;
 		case GT_WOLF_CAMPAIGN:
 			s = va(CG_TranslateString("MAP %i of %i"), cgs.currentCampaignMap + 1, cgs.campaignData.mapCount);
-			w = CG_Text_Width_Ext(s, 0.25f, 0, FONT_HEADER);
-
-			CG_Text_Paint_Ext(x + 300 - w * 0.5f, y, 0.25f, 0.25f, SB_text, s, 0, 0, 0, FONT_HEADER);
 			break;
 		case GT_WOLF_MAPVOTE:
-			s = (cgs.mapVoteMapY ? va(CG_TranslateString("MAP %i of %i"), cgs.mapVoteMapX + 1, cgs.mapVoteMapY) : "");
-			w = CG_Text_Width_Ext(s, 0.25f, 0, FONT_HEADER);
-
-			CG_Text_Paint_Ext(x + 300 - w * 0.5f, y, 0.25f, 0.25f, SB_text, s, 0, 0, 0, FONT_HEADER);
+			s = (cgs.mapVoteMapY ? va(CG_TranslateString("MAP %i of %i"), cgs.mapVoteMapX + 1, cgs.mapVoteMapY) : "MAP");
 			break;
 		default:
+			s = "MAP";
 			break;
 		}
+		w = CG_Text_Width_Ext(s, 0.25f, 0, FONT_HEADER);
 
-		y += 18;
+		CG_Text_Paint_Ext(x + 300 - w * 0.5f, y, 0.25f, 0.25f, SB_text, s, 0, 0, 0, FONT_HEADER);
+
+		y += 12;
 
 		if (CG_ConfigString(CS_CONFIGNAME)[0])
 		{
 			s = va(CG_TranslateString("Config: ^7%s^7"), CG_ConfigString(CS_CONFIGNAME));
-			CG_Text_Paint_Ext(x, y, 0.24f, 0.28f, SB_text, s, 0, 0, 0, FONT_TEXT);
-
-			y += 18;
+			CG_Text_Paint_Ext(x, y, 0.20f, 0.20f, SB_text, s, 0, 0, 0, FONT_TEXT);
 		}
+
+		// map name
+		if (cgs.gametype == GT_WOLF_CAMPAIGN)
+		{
+			s = cgs.campaignInfoLoaded ? cgs.campaignData.arenas[cgs.currentCampaignMap].longname : cgs.campaignData.mapnames[cgs.currentCampaignMap];
+		}
+		else
+		{
+			s = cgs.arenaInfoLoaded ? cgs.arenaData.longname : cgs.rawmapname;
+		}
+
+		w = CG_Text_Width_Ext(s, 0.20f, 0, FONT_TEXT);
+		CG_Text_Paint_Ext(x + 300 - w * 0.5f, y, 0.20f, 0.20f, SB_text, s, 0, 0, 0, FONT_TEXT);
+
+		y += 12;
 	}
 	return y;
 }
@@ -697,8 +761,8 @@ static void WM_DrawClientScore(int x, int y, score_t *score, float fade, qboolea
 	int          maxchars = 16;
 	int          rowHeight = 16;
 	float        scaleX = 0.24f, scaleY = 0.28f;
-	int          offsetY    = 12;
-	clientInfo_t *ci        = &cgs.clientinfo[score->client];
+	int          offsetY = 12;
+	clientInfo_t *ci     = &cgs.clientinfo[score->client];
 
 	WM_DrawClientScore_Highlight(x, y, rowHeight, fade, score);
 
@@ -788,10 +852,10 @@ static int WM_DrawInfoLine(int x, int y, float fade)
 	w = 360;
 
 	s        = CG_ConfigString(CS_MULTI_INFO);
-	defender = atoi(Info_ValueForKey(s, "d")); // defender
+	defender = Q_atoi(Info_ValueForKey(s, "d")); // defender
 
 	s      = CG_ConfigString(CS_MULTI_MAPWINNER);
-	winner = atoi(Info_ValueForKey(s, "w"));
+	winner = Q_atoi(Info_ValueForKey(s, "w"));
 
 	if (cgs.currentRound)
 	{
@@ -858,7 +922,7 @@ static int WM_TeamScoreboard(int x, int y, team_t team, float fade, int maxrows,
 	const char *buffer   = CG_ConfigString(CS_SERVERINFO);
 	const char *str      = Info_ValueForKey(buffer, "g_maxlives");
 
-	if (str && *str && atoi(str))
+	if (str && *str && Q_atoi(str))
 	{
 		livesleft = qtrue;
 	}
@@ -866,7 +930,7 @@ static int WM_TeamScoreboard(int x, int y, team_t team, float fade, int maxrows,
 	if (!livesleft)
 	{
 		str = Info_ValueForKey(buffer, "g_alliedmaxlives");
-		if (str && *str && atoi(str))
+		if (str && *str && Q_atoi(str))
 		{
 			livesleft = qtrue;
 		}
@@ -875,7 +939,7 @@ static int WM_TeamScoreboard(int x, int y, team_t team, float fade, int maxrows,
 	if (!livesleft)
 	{
 		str = Info_ValueForKey(buffer, "g_axismaxlives");
-		if (str && *str && atoi(str))
+		if (str && *str && Q_atoi(str))
 		{
 			livesleft = qtrue;
 		}
@@ -1262,7 +1326,7 @@ qboolean CG_DrawScoreboard(void)
 	else if (cg.snap->ps.pm_type == PM_INTERMISSION)
 	{
 		maxrows    = 9;
-		absmaxrows = 12;
+		absmaxrows = 16;
 	}
 	else
 	{
@@ -1316,7 +1380,7 @@ qboolean CG_DrawScoreboard(void)
 
 		w = CG_Text_Width_Ext(s, fontScale, 0, &cgs.media.limboFont2);
 		x = Ccg_WideX(SCREEN_WIDTH / 2) - w / 2;
-		y = (CG_ConfigString(CS_CONFIGNAME)[0] ? 456 : 438); // for config display
+		y = 450;
 		CG_Text_Paint_Ext(x, y, fontScale, fontScale, colorWhite, s, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
 	}
 #endif

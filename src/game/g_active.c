@@ -714,8 +714,8 @@ void SpectatorThink(gentity_t *ent, usercmd_t *ucmd)
  */
 qboolean ClientInactivityTimer(gclient_t *client)
 {
-	int      inactivity     = (g_inactivity.integer) ? g_inactivity.integer : 60;
-	int      inactivityspec = (g_spectatorInactivity.integer) ? g_spectatorInactivity.integer : 60;
+	int      inactivity     = G_InactivityValue;
+	int      inactivityspec = G_SpectatorInactivityValue;
 	qboolean inTeam         = (client->sess.sessionTeam == TEAM_ALLIES || client->sess.sessionTeam == TEAM_AXIS) ? qtrue : qfalse;
 
 #ifdef FEATURE_OMNIBOT
@@ -1828,9 +1828,10 @@ void SpectatorClientEndFrame(gentity_t *ent)
 		if (ent->client->sess.spectatorClient >= 0)
 		{
 			cl = &level.clients[ent->client->sess.spectatorClient];
-			if (cl->pers.connected == CON_CONNECTED && cl->sess.sessionTeam != TEAM_SPECTATOR)
+			if ((cl->pers.connected == CON_CONNECTED && cl->sess.sessionTeam != TEAM_SPECTATOR) ||
+			    (cl->pers.connected == CON_CONNECTED && cl->sess.shoutcaster && ent->client->sess.shoutcaster))
 			{
-				int flags = (cl->ps.eFlags & ~(EF_VOTED)) | (ent->client->ps.eFlags & (EF_VOTED));
+				int flags = (cl->ps.eFlags & ~(EF_VOTED | EF_READY)) | (ent->client->ps.eFlags & (EF_VOTED | EF_READY));
 				int ping  = ent->client->ps.ping;
 
 				if (ent->client->sess.sessionTeam != TEAM_SPECTATOR && (ent->client->ps.pm_flags & PMF_LIMBO))
@@ -2054,6 +2055,10 @@ void WolfReviveBbox(gentity_t *self)
 
 		// Reset value so we don't continue to warp them
 		self->props_frame_state = -1;
+
+		// reset push velocity, otherwise player will fly away if is velocity too strong
+		VectorClear(self->s.pos.trDelta);
+		VectorClear(self->client->ps.velocity);
 	}
 }
 
@@ -2227,6 +2232,11 @@ void ClientEndFrame(gentity_t *ent)
 		{
 			ent->health = ent->client->ps.stats[STAT_HEALTH] = ent->client->ps.stats[STAT_MAX_HEALTH];
 		}
+
+		if (ent->client->sess.playerType == PC_MEDIC)
+		{
+			ent->health = ent->client->ps.stats[STAT_HEALTH] /= 1.12;
+		}
 	}
 	else
 	{
@@ -2309,24 +2319,24 @@ void ClientEndFrame(gentity_t *ent)
 		// green
 		G_RailBox(ent->r.currentOrigin, ent->r.mins, maxs, tv(0.f, 1.f, 0.f), ent->s.number);
 
-        // wounded player don't have head and legs hitbox, (see G_BuildHead and G_BuildLeg)
-        if (!(ent->client->ps.eFlags & EF_DEAD))
-        {
-            head = G_BuildHead(ent, &refent, qtrue);
-            // green
-            G_RailBox(head->r.currentOrigin, head->r.mins, head->r.maxs, tv(0.f, 1.f, 0.f), head->s.number | HITBOXBIT_HEAD);
-            G_FreeEntity(head);
+		// wounded player don't have head and legs hitbox, (see G_BuildHead and G_BuildLeg)
+		if (!(ent->client->ps.eFlags & EF_DEAD))
+		{
+			head = G_BuildHead(ent, &refent, qtrue);
+			// green
+			G_RailBox(head->r.currentOrigin, head->r.mins, head->r.maxs, tv(0.f, 1.f, 0.f), head->s.number | HITBOXBIT_HEAD);
+			G_FreeEntity(head);
 
-            if (ent->client->ps.eFlags & EF_PRONE)
-            {
-                gentity_t *legs;
+			if (ent->client->ps.eFlags & EF_PRONE)
+			{
+				gentity_t *legs;
 
-                legs = G_BuildLeg(ent, &refent, qtrue);
-                // green
-                G_RailBox(legs->r.currentOrigin, legs->r.mins, legs->r.maxs, tv(0.f, 1.f, 0.f), legs->s.number | HITBOXBIT_LEGS);
-                G_FreeEntity(legs);
-            }
-        }
+				legs = G_BuildLeg(ent, &refent, qtrue);
+				// green
+				G_RailBox(legs->r.currentOrigin, legs->r.mins, legs->r.maxs, tv(0.f, 1.f, 0.f), legs->s.number | HITBOXBIT_LEGS);
+				G_FreeEntity(legs);
+			}
+		}
 	}
 
 	// debug head and legs box for collision (see PM_TraceHead and PM_TraceLegs)

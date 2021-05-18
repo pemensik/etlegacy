@@ -101,6 +101,8 @@ void SV_SetConfigstring(int index, const char *val)
 	}
 }
 
+#define NEXT_WARNING_TIME 5000
+
 /**
  * @brief Updates the configstring
  * @note It's nice to know this function sends several server commands when a configstring is greater than 1000 usually BIG_INFO_STRINGs
@@ -112,6 +114,8 @@ void SV_UpdateConfigStrings(void)
 	int        maxChunkSize = MAX_STRING_CHARS - 24;
 	const char *cmd;
 	char       buf[MAX_STRING_CHARS];
+	static int nextWarningSysInfoTime   = 0;
+	static int nextWarningGameStateTime = 0;
 
 	for (index = 0; index < MAX_CONFIGSTRINGS; index++)
 	{
@@ -122,12 +126,17 @@ void SV_UpdateConfigStrings(void)
 
 			if (index == CS_SYSTEMINFO)
 			{
-				// about 10% of BIG_INFO_VALUE - this grants the server will start properly
-				// but total CS limit might be reached soon when CS_SYSTEMINFO uses nearly half of total CS
-				// warn admins
-				if (strlen(sv.configstrings[index]) > BIG_INFO_VALUE - 800)
+				if (nextWarningSysInfoTime <= svs.time)
 				{
-					Com_Printf(S_COLOR_YELLOW "WARNING: Your server nearly reached a configstring limit [%i chars left] - reduce the ammount of maps/pk3s in path\n", (int) (BIG_INFO_VALUE - strlen(sv.configstrings[index])));
+					nextWarningSysInfoTime = svs.time + NEXT_WARNING_TIME;
+
+					// about 10% of BIG_INFO_VALUE - this grants the server will start properly
+					// but total CS limit might be reached soon when CS_SYSTEMINFO uses nearly half of total CS
+					// warn admins
+					if (strlen(sv.configstrings[index]) > BIG_INFO_VALUE - 800)
+					{
+						Com_Printf(S_COLOR_YELLOW "WARNING: Your server nearly reached a configstring limit [%i chars left] - reduce the ammount of maps/pk3s in path\n", (int) (BIG_INFO_VALUE - strlen(sv.configstrings[index])));
+					}
 				}
 			}
 		}
@@ -192,10 +201,15 @@ void SV_UpdateConfigStrings(void)
 			}
 		}
 
-		// warn admins
-		if (cstotal > MAX_GAMESTATE_CHARS - 800) // 5% of MAX_GAMESTATE_CHARS
+		if (nextWarningGameStateTime <= svs.time)
 		{
-			Com_Printf(S_COLOR_YELLOW "WARNING: Your clients might be disconnected by configstring limit [%i chars left] - reduce the ammount of maps/pk3s in path\n", MAX_GAMESTATE_CHARS - cstotal);
+			nextWarningGameStateTime = svs.time + NEXT_WARNING_TIME;
+
+			// warn admins
+			if (cstotal > MAX_GAMESTATE_CHARS - 800) // 5% of MAX_GAMESTATE_CHARS
+			{
+				Com_Printf(S_COLOR_YELLOW "WARNING: Your clients might be disconnected by configstring limit [%i chars left] - reduce the ammount of maps/pk3s in path\n", MAX_GAMESTATE_CHARS - cstotal);
+			}
 		}
 	}
 }
@@ -470,7 +484,7 @@ void SV_SetExpectedHunkUsage(const char *mapname)
 				if (token && token[0])
 				{
 					// this is the usage
-					com_expectedhunkusage = atoi(token);
+					com_expectedhunkusage = Q_atoi(token);
 					Z_Free(buf);
 					return;
 				}
@@ -1071,7 +1085,7 @@ void SV_Init(void)
 
 	// master servers
 	Cvar_Get("sv_master1", "etmaster.idsoftware.com", CVAR_PROTECTED);
-	Cvar_Get("sv_master2", "master.etlegacy.com", CVAR_PROTECTED);
+	Cvar_Get("sv_master2", com_masterServer->string, CVAR_INIT);
 
 	sv_reconnectlimit = Cvar_Get("sv_reconnectlimit", "3", 0);
 	sv_tempbanmessage = Cvar_Get("sv_tempbanmessage", "You have been kicked and are temporarily banned from joining this server.", 0);
@@ -1140,6 +1154,8 @@ void SV_Init(void)
 	svs.serverLoad = -1;
 
 	sv_ipMaxClients = Cvar_Get("sv_ipMaxClients", "0", CVAR_ARCHIVE);
+
+	sv_guidCheck = Cvar_Get("sv_guidCheck", "1", CVAR_ARCHIVE);
 
 #if defined(FEATURE_IRC_SERVER) && defined(DEDICATED)
 	IRC_Init();

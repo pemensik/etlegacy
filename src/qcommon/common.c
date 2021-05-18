@@ -56,6 +56,8 @@
 
 #ifdef FEATURE_DBMS
 #include "../db/db_sql.h"
+#include "q_unicode.h"
+
 #endif
 
 // NOTE: if protocol gets bumped please add 84 to the list before 0
@@ -107,7 +109,6 @@ cvar_t *com_developer;
 cvar_t *com_dedicated;
 cvar_t *com_timescale;
 cvar_t *com_fixedtime;
-cvar_t *com_dropsim;        // 0.0 to 1.0, simulated packet drops
 cvar_t *com_journal;
 cvar_t *com_maxfps;
 cvar_t *com_timedemo;
@@ -151,6 +152,9 @@ cvar_t *com_watchdog_cmd;
 
 cvar_t *com_hunkused;
 
+cvar_t *com_masterServer;
+cvar_t *com_motdServer;
+cvar_t *com_updateServer;
 cvar_t *com_downloadURL;
 
 // com_speeds times
@@ -166,7 +170,7 @@ int com_hunkusedvalue;
 qboolean com_errorEntered;
 qboolean com_fullyInitialized;
 
-char com_errorMessage[MAXPRINTMSG];
+char com_errorMessage[MAX_PRINT_MSG];
 
 void Com_WriteConfig_f(void);
 void CIN_CloseAllVideos(void);
@@ -221,8 +225,8 @@ void Com_EndRedirect(void)
 void QDECL Com_Printf(const char *fmt, ...)
 {
 	va_list         argptr;
-	char            buffer[MAXPRINTMSG];
-	char            *msg, *bufferEnd;
+	char            buffer[MAX_PRINT_MSG];
+	char            *msg, *bufferEnd, *tmpMsg;
 	static qboolean opening_qconsole = qfalse;
 	static qboolean lineWasEnded = qtrue;
 	int             timestamp;
@@ -252,6 +256,13 @@ void QDECL Com_Printf(const char *fmt, ...)
 		//rd_flush(rd_buffer);
 		//*rd_buffer = 0;
 		return;
+	}
+
+	// Simple trick to make sure that no extended ascii gets to the output.
+	tmpMsg = Q_Extended_To_UTF8(msg);
+	if (tmpMsg != msg)
+	{
+		strcpy(msg, tmpMsg);
 	}
 
 	// echo to console if we're not a dedicated server
@@ -321,7 +332,7 @@ void QDECL Com_Printf(const char *fmt, ...)
 void QDECL Com_DPrintf(const char *fmt, ...)
 {
 	va_list argptr;
-	char    msg[MAXPRINTMSG];
+	char    msg[MAX_PRINT_MSG];
 
 	if (!com_developer || !com_developer->integer)
 	{
@@ -958,7 +969,7 @@ typedef struct zonedebug_s
  */
 typedef struct memblock_s
 {
-	int size;               ///< including the header and possibly tiny fragments
+	size_t size;            ///< including the header and possibly tiny fragments
 	int tag;                ///< a tag of 0 is a free block
 	struct memblock_s *next, *prev;
 	int id;                 ///< should be ZONEID
@@ -1138,14 +1149,14 @@ memblock_t *debugblock;
  * @param[in] line
  * @return
  */
-void *Z_TagMallocDebug(int size, int tag, char *label, char *file, int line)
+void *Z_TagMallocDebug(size_t size, int tag, char *label, char *file, int line)
 {
-	int allocSize;
+	size_t allocSize;
 #else
-void *Z_TagMalloc(int size, int tag)
+void *Z_TagMalloc(size_t size, int tag)
 {
 #endif
-	int        extra;
+	size_t     extra;
 	memblock_t *start, *rover, *new, *base;
 	memzone_t  *zone;
 
@@ -1184,10 +1195,10 @@ void *Z_TagMalloc(int size, int tag)
 #ifdef ZONE_DEBUG
 			Z_LogHeap();
 
-			Com_Error(ERR_FATAL, "Z_Malloc: failed on allocation of %i bytes from the %s zone: %s, line: %d (%s)",
+			Com_Error(ERR_FATAL, "Z_Malloc: failed on allocation of %zu bytes from the %s zone: %s, line: %d (%s)",
 			          size, zone == smallzone ? "small" : "main", file, line, label);
 #else
-			Com_Error(ERR_FATAL, "Z_Malloc: failed on allocation of %i bytes from the %s zone",
+			Com_Error(ERR_FATAL, "Z_Malloc: failed on allocation of %zu bytes from the %s zone",
 			          size, zone == smallzone ? "small" : "main");
 #endif
 			return NULL;
@@ -1248,10 +1259,10 @@ void *Z_TagMalloc(int size, int tag)
  * @param[in] line
  * @return
  */
-void *Z_MallocDebug(int size, char *label, char *file, int line)
+void *Z_MallocDebug(size_t size, char *label, char *file, int line)
 {
 #else
-void *Z_Malloc(int size)
+void *Z_Malloc(size_t size)
 {
 #endif
 	void *buf;
@@ -1277,12 +1288,12 @@ void *Z_Malloc(int size)
  * @param[in] line
  * @return
  */
-void *S_MallocDebug(int size, char *label, char *file, int line)
+void *S_MallocDebug(size_t size, char *label, char *file, int line)
 {
 	return Z_TagMallocDebug(size, TAG_SMALL, label, file, line);
 }
 #else
-void *S_Malloc(int size)
+void *S_Malloc(size_t size)
 {
 	return Z_TagMalloc(size, TAG_SMALL);
 }
@@ -1534,7 +1545,7 @@ void Com_Meminfo_f(void)
 	{
 		if (Cmd_Argc() != 1)
 		{
-			Com_Printf("block:%p    size:%7i    tag:%3i\n",
+			Com_Printf("block:%p    size:%7zu    tag:%3i\n",
 			           block, block->size, block->tag);
 		}
 		if (block->tag)
@@ -1997,10 +2008,10 @@ static void Hunk_SwapBanks(void)
  * @param[in] line
  * @return
  */
-void *Hunk_AllocDebug(unsigned int size, ha_pref preference, char *label, char *file, int line)
+void *Hunk_AllocDebug(size_t size, ha_pref preference, char *label, char *file, int line)
 {
 #else
-void *Hunk_Alloc(unsigned int size, ha_pref preference)
+void *Hunk_Alloc(size_t size, ha_pref preference)
 {
 #endif
 	void *buf;
@@ -2025,7 +2036,7 @@ void *Hunk_Alloc(unsigned int size, ha_pref preference)
 		Hunk_Log();
 		Hunk_SmallLog();
 #endif
-		Com_Error(ERR_DROP, "Hunk_Alloc failed on %u", size);
+		Com_Error(ERR_DROP, "Hunk_Alloc failed on %zu", size);
 	}
 
 	if (hunk_permanent == &hunk_low)
@@ -2074,14 +2085,14 @@ void *Hunk_Alloc(unsigned int size, ha_pref preference)
  * @param size
  * @return
  */
-void *Hunk_AllocateTempMemory(unsigned int size)
+void *Hunk_AllocateTempMemory(size_t size)
 {
 	void         *buf;
 	hunkHeader_t *hdr;
 
 	// return a Z_Malloc'd block if the hunk has not been initialized
 	// this allows the config and product id files ( journal files too ) to be loaded
-	// by the file system without redunant routines in the file system utilizing different
+	// by the file system without redundant routines in the file system utilizing different
 	// memory systems
 	if (s_hunkData == NULL)
 	{
@@ -2094,7 +2105,7 @@ void *Hunk_AllocateTempMemory(unsigned int size)
 
 	if (hunk_temp->temp + hunk_permanent->permanent + size > s_hunkTotal)
 	{
-		Com_Error(ERR_DROP, "Hunk_AllocateTempMemory: failed on %u", size);
+		Com_Error(ERR_DROP, "Hunk_AllocateTempMemory: failed on %zu", size);
 	}
 
 	if (hunk_temp == &hunk_low)
@@ -2596,7 +2607,7 @@ int Com_Milliseconds(void)
 /**
  * @brief Just throw a fatal error to test error shutdown procedures
  */
-static void __attribute__ ((noreturn)) Com_Error_f(void)
+static void _attribute((noreturn)) Com_Error_f(void)
 {
 	if (Cmd_Argc() > 1)
 	{
@@ -2684,7 +2695,7 @@ qboolean Com_CheckProfile(void)
 		return qfalse;
 	}
 
-	f_pid = atoi(f_data);
+	f_pid = Q_atoi(f_data);
 	if (f_pid != com_pid->integer)
 	{
 		// pid doesn't match
@@ -2884,6 +2895,10 @@ void Com_Init(char *commandLine)
 			// exec the config
 			Cbuf_AddText(va("exec profiles/%s/%s\n", cl_profileStr, CONFIG_NAME));
 		}
+		else
+		{
+			Cbuf_AddText(va("exec %s\n", CONFIG_NAME));
+		}
 	}
 
 #ifdef FEATURE_DBMS
@@ -2932,7 +2947,6 @@ void Com_Init(char *commandLine)
 	com_timescale = Cvar_Get("timescale", "1", CVAR_CHEAT | CVAR_SYSTEMINFO);
 	com_fixedtime = Cvar_Get("fixedtime", "0", CVAR_CHEAT);
 	com_showtrace = Cvar_Get("com_showtrace", "0", CVAR_CHEAT);
-	com_dropsim   = Cvar_Get("com_dropsim", "0", CVAR_CHEAT);
 	com_viewlog   = Cvar_Get("viewlog", "0", CVAR_CHEAT);
 	com_speeds    = Cvar_Get("com_speeds", "0", 0);
 	com_timedemo  = Cvar_Get("timedemo", "0", CVAR_CHEAT);
@@ -2944,14 +2958,17 @@ void Com_Init(char *commandLine)
 
 	cl_paused       = Cvar_Get("cl_paused", "0", CVAR_ROM);
 	sv_paused       = Cvar_Get("sv_paused", "0", CVAR_ROM);
-	com_sv_running  = Cvar_Get("sv_running", "0", CVAR_ROM);
-	com_cl_running  = Cvar_Get("cl_running", "0", CVAR_ROM);
+	com_sv_running  = Cvar_Get("sv_running", "0", CVAR_ROM | CVAR_NOTABCOMPLETE);
+	com_cl_running  = Cvar_Get("cl_running", "0", CVAR_ROM | CVAR_NOTABCOMPLETE);
 	com_buildScript = Cvar_Get("com_buildScript", "0", 0);
 
 	con_drawnotify  = Cvar_Get("con_drawnotify", "0", CVAR_CHEAT);
 	con_numNotifies = Cvar_Get("con_numNotifies", "4", CVAR_CHEAT);
 
 	com_introPlayed = Cvar_Get("com_introplayed", "0", CVAR_ARCHIVE);
+
+	// this cvar is the single entry point of the entire extension system
+	Cvar_Get( "//trap_GetValue", va( "%i", COM_TRAP_GETVALUE ), CVAR_PROTECTED | CVAR_ROM | CVAR_NOTABCOMPLETE );
 
 #if idppc
 	com_altivec = Cvar_Get("com_altivec", "1", CVAR_ARCHIVE);
@@ -2989,9 +3006,12 @@ void Com_Init(char *commandLine)
 	Cmd_AddCommand("changeVectors", MSG_ReportChangeVectors_f, "Prints out a table from the current statistics for copying to code.");
 	Cmd_AddCommand("writeconfig", Com_WriteConfig_f, "Write the config file to a specific name.");
 	Cmd_AddCommand("update", Com_Update_f, "Updates the game to latest version.");
-
-	com_downloadURL = Cvar_Get("com_downloadURL", "http://mirror.etlegacy.com/etmain", CVAR_INIT);
 	Cmd_AddCommand("download", Com_Download_f, "Downloads a pk3 from the URL set in cvar com_downloadURL.");
+
+	com_masterServer = Cvar_Get("com_masterServer", MASTER_SERVER_NAME, CVAR_INIT);
+	com_motdServer   = Cvar_Get("com_motdServer", MOTD_SERVER_NAME, CVAR_INIT);
+	com_updateServer = Cvar_Get("com_updateServer", UPDATE_SERVER_NAME, CVAR_INIT);
+	com_downloadURL  = Cvar_Get("com_downloadURL", DOWNLOAD_SERVER_URL, CVAR_INIT);
 
 #ifdef FEATURE_DBMS
 	Cmd_AddCommand("saveDB", DB_SaveMemDB_f, "Saves the internal memory database to disk.");
@@ -3001,7 +3021,7 @@ void Com_Init(char *commandLine)
 	}
 #endif
 
-	com_version = Cvar_Get("version", ET_VERSION, CVAR_ROM | CVAR_SERVERINFO);
+	com_version = Cvar_Get("version", FAKE_VERSION, CVAR_ROM | CVAR_SERVERINFO);
 
 	com_motd       = Cvar_Get("com_motd", "1", 0);
 	com_motdString = Cvar_Get("com_motdString", "", CVAR_ROM);
@@ -3035,6 +3055,8 @@ void Com_Init(char *commandLine)
 	{
 		// if the user didn't give any commands, run default action
 	}
+
+	NET_Init();
 
 	CL_StartHunkUsers();
 
@@ -3115,6 +3137,10 @@ void Com_WriteConfiguration(void)
 		if (cl_profileStr[0])
 		{
 			Com_WriteConfigToFile(va("profiles/%s/%s", cl_profileStr, CONFIG_NAME));
+		}
+		else
+		{
+			Com_WriteConfigToFile(CONFIG_NAME);
 		}
 	}
 }

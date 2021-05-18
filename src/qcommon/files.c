@@ -42,13 +42,11 @@
 
 #ifdef BUNDLED_MINIZIP
 #    include "unzip.h"
+#elif defined(__APPLE__)
+#    include <minizip/unzip.h>
 #else
 #    include <unzip.h>
 #endif
-
-#ifdef _WIN32
-#define realpath(N, R) _fullpath((R), (N), _MAX_PATH)
-#endif // _WIN32
 
 /*
 =============================================================================
@@ -784,7 +782,7 @@ void FS_Remove(const char *osPath)
 {
 	int ret;
 
-	ret = remove(osPath);
+	ret = Sys_Remove(osPath);
 
 	if (ret != 0)
 	{
@@ -802,7 +800,7 @@ void FS_HomeRemove(const char *homePath)
 
 	FS_CheckFilenameIsNotExecutable(homePath, __func__); // keep in mind we want to delete pk3s in homepath
 
-	ret = remove(FS_BuildOSPath(fs_homepath->string, fs_gamedir, homePath));
+	ret = Sys_Remove(FS_BuildOSPath(fs_homepath->string, fs_gamedir, homePath));
 
 	if (ret != 0)
 	{
@@ -812,18 +810,23 @@ void FS_HomeRemove(const char *homePath)
 
 /**
  * @brief Tests if path and file exists
- * @param[in] testpath
- * @return
+ * @param[in] ospath full OS -path to file
+ * @return qtrue if the file exists
  */
-qboolean FS_FileInPathExists(const char *testpath)
+qboolean FS_FileInPathExists(const char *ospath)
 {
-	FILE *filep;
+	FILE *fileHandle;
 
-	filep = Sys_FOpen(testpath, "rb");
-
-	if (filep)
+	if (!ospath || !ospath[0])
 	{
-		fclose(filep);
+		return qfalse;
+	}
+
+	fileHandle = Sys_FOpen(ospath, "rb");
+
+	if (fileHandle)
+	{
+		fclose(fileHandle);
 		return qtrue;
 	}
 
@@ -862,14 +865,24 @@ qboolean FS_FileExists(const char *file)
  * @param[in] file
  * @return
  */
-qboolean FS_SV_FileExists(const char *file)
+qboolean FS_SV_FileExists(const char *file, qboolean checkBase)
 {
 	char *testpath;
+	qboolean homeFound = qfalse;
 
 	testpath                       = FS_BuildOSPath(fs_homepath->string, file, "");
 	testpath[strlen(testpath) - 1] = '\0';
 
-	return FS_FileInPathExists(testpath);
+	homeFound = FS_FileInPathExists(testpath);
+
+	if (!homeFound && checkBase)
+	{
+		testpath                       = FS_BuildOSPath(fs_basepath->string, file, "");
+		testpath[strlen(testpath) - 1] = '\0';
+		return FS_FileInPathExists(testpath);
+	}
+
+	return homeFound;
 }
 
 /**
@@ -1013,7 +1026,7 @@ void FS_SV_Rename(const char *from, const char *to)
 	}
 	FS_CheckFilenameIsNotExecutable(to_ospath, __func__);
 
-	if (rename(from_ospath, to_ospath))
+	if (Sys_Rename(from_ospath, to_ospath))
 	{
 		// Failed, try copying it and deleting the original
 		FS_CopyFile(from_ospath, to_ospath);
@@ -1045,7 +1058,7 @@ void FS_Rename(const char *from, const char *to)
 	}
 	FS_CheckFilenameIsMutable(to_ospath, __func__);
 
-	if (rename(from_ospath, to_ospath))
+	if (Sys_Rename(from_ospath, to_ospath))
 	{
 		// Failed, try copying it and deleting the original
 		FS_CopyFile(from_ospath, to_ospath);
@@ -1295,11 +1308,16 @@ qboolean FS_IsDemoExt(const char *fileName, int namelen)
 {
 	char *ext_test;
 
+	if (!fileName || !fileName[0])
+	{
+		return qfalse;
+	}
+
 	ext_test = strrchr(fileName, '.');
 	if (ext_test && (!Q_stricmpn(ext_test + 1, DEMOEXT, ARRAY_LEN(DEMOEXT) - 1) || !Q_stricmpn(ext_test + 1, SVDEMOEXT, ARRAY_LEN(SVDEMOEXT) - 1)))
 	{
 		int index;
-		int protocol = atoi(ext_test + ARRAY_LEN(DEMOEXT));
+		int protocol = Q_atoi(ext_test + ARRAY_LEN(DEMOEXT));
 
 		if (protocol == PROTOCOL_VERSION /*com_protocol->integer*/)
 		{
@@ -1321,6 +1339,82 @@ qboolean FS_IsDemoExt(const char *fileName, int namelen)
 extern qboolean com_fullyInitialized;
 
 static int fs_filter_flag = 0;
+
+#ifdef _WIN32
+static voidpf ZCALLBACK FS_UnzOpenFopenFileFunc (voidpf opaque, const char* filename, int mode)
+{
+	voidpf file = NULL;
+	const char* mode_fopen = NULL;
+
+	if ((mode & ZLIB_FILEFUNC_MODE_READWRITEFILTER)==ZLIB_FILEFUNC_MODE_READ)
+	{
+		mode_fopen = "rb";
+	}
+	else if (mode & ZLIB_FILEFUNC_MODE_EXISTING)
+	{
+		mode_fopen = "r+b";
+	}
+	else if (mode & ZLIB_FILEFUNC_MODE_CREATE)
+	{
+		mode_fopen = "wb";
+	}
+
+	if ((filename!=NULL) && (mode_fopen != NULL))
+	{
+		file = Sys_FOpen(filename, mode_fopen);
+	}
+	return file;
+}
+
+static unzFile FS_UnzOpen(const char *fileName)
+{
+	static zlib_filefunc_def funcs;
+	static qboolean funcsInit = qfalse;
+
+	if(!funcsInit)
+	{
+		fill_fopen_filefunc(&funcs);
+		funcs.zopen_file = FS_UnzOpenFopenFileFunc;
+		funcsInit = qtrue;
+	}
+
+	return unzOpen2(fileName, &funcs);
+}
+#else
+#define FS_UnzOpen(x) unzOpen(x)
+#endif
+
+/**
+ * @brief Opens a file to read from an absolute system directory, should not be used instead of the normal FS methods
+ * @param fullFileName Full file OS path
+ * @param file filehandle
+ * @return filesize or -1 if the open fails
+ */
+long FS_FOpenFileReadFullDir(const char *fullFileName, fileHandle_t *file)
+{
+	FILE         *filep;
+
+	*file                         = FS_HandleForFile();
+	fsh[*file].handleFiles.unique = qtrue;
+
+	filep   = Sys_FOpen(fullFileName, "rb");
+	if (filep == NULL)
+	{
+		*file = 0;
+		return -1;
+	}
+
+	Q_strncpyz(fsh[*file].name, fullFileName, sizeof(fsh[*file].name));
+	fsh[*file].zipFile = qfalse;
+
+	if (fs_debug->integer)
+	{
+		Com_Printf("FS_FOpenFileRead: %s\n", fullFileName);
+	}
+
+	fsh[*file].handleFiles.file.o = filep;
+	return FS_fplength(filep);
+}
 
 /**
  * @brief Finds the file in the search path.
@@ -1535,7 +1629,7 @@ long FS_FOpenFileReadDir(const char *fileName, searchpath_t *search, fileHandle_
 					if (uniqueFILE)
 					{
 						// open a new file on the pakfile
-						fsh[*file].handleFiles.file.z = unzOpen(pak->pakFilename);
+						fsh[*file].handleFiles.file.z = FS_UnzOpen(pak->pakFilename);
 
 						if (fsh[*file].handleFiles.file.z == NULL)
 						{
@@ -1907,7 +2001,7 @@ int FS_DeleteDir(const char *dirname, qboolean nonEmpty, qboolean recursive)
 		{
 			ospath = FS_BuildOSPath(fs_homepath->string, fs_gamedir, va("%s/%s", dirname, pFiles[i]));
 
-			if (remove(ospath) == -1)        // failure
+			if (Sys_Remove(ospath) == -1)        // failure
 			{
 				return 0;
 			}
@@ -1917,7 +2011,7 @@ int FS_DeleteDir(const char *dirname, qboolean nonEmpty, qboolean recursive)
 
 	ospath = FS_BuildOSPath(fs_homepath->string, fs_gamedir, dirname);
 
-	if (Q_rmdir(ospath) == 0)
+	if (Sys_RemoveDir(ospath) == 0)
 	{
 		return 1;
 	}
@@ -1925,7 +2019,6 @@ int FS_DeleteDir(const char *dirname, qboolean nonEmpty, qboolean recursive)
 	return 0;
 }
 
-#ifdef WIN32
 /**
  * @brief Test an file given OS path
  * @param ospath
@@ -1935,34 +2028,44 @@ int FS_DeleteDir(const char *dirname, qboolean nonEmpty, qboolean recursive)
  */
 int FS_OSStatFile(const char *ospath)
 {
-	struct _stat stat;
+	sys_stat_t stat_buf;
 
-	if (_stat(ospath, &stat) == -1)
+	if (Sys_Stat(ospath, &stat_buf) == -1)
 	{
 		return -1;
 	}
-	if (stat.st_mode & _S_IFDIR)
+	if (Sys_S_IsDir(stat_buf.st_mode))
 	{
 		return 1;
 	}
+
 	return 0;
 }
-#else
-int FS_OSStatFile(const char *ospath)
+
+/**
+ * @brief Return the age of the file in seconds
+ * @param ospath full OS path to the file to check
+ * @return time in seconds and -1 if not possible
+ */
+long FS_FileAge(const char *ospath)
 {
-	struct stat stat_buf;
+	sys_stat_t stat_buf;
+	time_t now, creation;
 
-	if (stat(ospath, &stat_buf) == -1)
+	if (Sys_Stat(ospath, &stat_buf) == -1)
 	{
 		return -1;
 	}
-	if (S_ISDIR(stat_buf.st_mode))
+
+	time(&now);
+	creation = stat_buf.st_ctime;
+	if (creation <= 0)
 	{
-		return 1;
+		return -1;
 	}
-	return 0;
+
+	return (now - creation);
 }
-#endif
 
 /**
  * @brief Removes file in the current fs_gamedir in homepath
@@ -2005,7 +2108,7 @@ int FS_Delete(const char *fileName)
 	}
 	else
 	{
-		if (remove(ospath) != -1)        // success
+		if (Sys_Remove(ospath) != -1)        // success
 		{
 			return 1;
 		}
@@ -2149,7 +2252,7 @@ int FS_Write(const void *buffer, int len, fileHandle_t h)
 void QDECL FS_Printf(fileHandle_t h, const char *fmt, ...)
 {
 	va_list argptr;
-	char    msg[MAXPRINTMSG];
+	char    msg[MAX_PRINT_MSG];
 
 	va_start(argptr, fmt);
 	Q_vsnprintf(msg, sizeof(msg), fmt, argptr);
@@ -2575,7 +2678,7 @@ static pack_t *FS_LoadZipFile(const char *zipfile, const char *basename)
 	int             *fs_headerLongs;
 	char            *namePtr;
 
-	uf  = unzOpen(zipfile);
+	uf  = FS_UnzOpen(zipfile);
 	err = unzGetGlobalInfo(uf, &gi);
 
 	if (err != UNZ_OK)
@@ -2681,14 +2784,15 @@ static void FS_FreePak(pack_t *thepak)
 /**
  * @brief Compares whether the given pak file matches a referenced checksum
  * @param[in] zipfile
+ * @param[in] checksum
  * @return
  *
  * @note Unused
  */
-qboolean FS_CompareZipChecksum(const char *zipfile)
+qboolean FS_CompareZipChecksum(const char *zipfile, const int checksum)
 {
 	pack_t *thepak;
-	int    index, checksum;
+	int    index, zipChecksum;
 
 	thepak = FS_LoadZipFile(zipfile, "");
 
@@ -2697,18 +2801,52 @@ qboolean FS_CompareZipChecksum(const char *zipfile)
 		return qfalse;
 	}
 
-	checksum = thepak->checksum;
+	zipChecksum = thepak->checksum;
 	FS_FreePak(thepak);
+
+	if(checksum)
+	{
+		return checksum == zipChecksum;
+	}
 
 	for (index = 0; index < fs_numServerReferencedPaks; index++)
 	{
-		if (checksum == fs_serverReferencedPaks[index])
+		if (zipChecksum == fs_serverReferencedPaks[index])
 		{
 			return qtrue;
 		}
 	}
 
 	return qfalse;
+}
+
+/**
+ * @brief find a pack matching the checksum
+ * @param checksum to find
+ * @return the found pack or NULL
+ */
+static pack_t *FS_FindPack(const int checksum)
+{
+	searchpath_t *sp;
+	for (sp = fs_searchpaths ; sp ; sp = sp->next)
+	{
+		if (sp->pack && sp->pack->checksum == checksum)
+		{
+			return sp->pack;
+		}
+	}
+
+	return NULL;
+}
+
+/**
+ * @brief does the search path contain a pack with checksum
+ * @param checksum to find
+ * @return qtrue if pack is found
+ */
+static inline qboolean FS_HasPack(const int checksum)
+{
+	return FS_FindPack(checksum) != NULL;
 }
 
 /**
@@ -3194,6 +3332,7 @@ int FS_GetModList(char *listbuf, int bufsize)
 
 					file = FS_FileForHandle(descHandle);
 					Com_Memset(descPath, 0, sizeof(descPath));
+
 					nDescLen = fread(descPath, 1, 48, file);
 					if (nDescLen >= 0)
 					{
@@ -3357,10 +3496,10 @@ qboolean FS_IsSamePath(const char *s1, const char *s2)
 {
 	char *res1, *res2;
 
-	res1 = realpath(s1, NULL);
-	res2 = realpath(s2, NULL);
+	res1 = Sys_RealPath(s1);
+	res2 = Sys_RealPath(s2);
 
-	// realpath() returns NULL if there are issues with the file
+	// Sys_RealPath() returns NULL if there are issues with the file
 	// so the function returns true (only) if there are no errors and paths are equal
 	if (res1 && res2 && !Q_stricmp(res1, res2))
 	{
@@ -3566,6 +3705,32 @@ void FS_Which_f(void)
 }
 
 //===========================================================================
+
+/**
+ * @brief FS_AddPackToPath add a single package to the search path
+ * @param osPath full os path to the pk3 file
+ * @param gameName game name this package will be registered for
+ */
+static void FS_AddPackToPath(const char *osPath, const char *gameName)
+{
+	pack_t       *pak;
+	searchpath_t *search;
+
+	if ((pak = FS_LoadZipFile(osPath, "")) == NULL)
+	{
+		return;
+	}
+
+	Q_strncpyz(pak->pakPathname, FS_Dirpath(osPath), sizeof(pak->pakPathname));
+	Q_strncpyz(pak->pakGamename, FS_NormalizePath(gameName), sizeof(pak->pakGamename));
+
+	fs_packFiles += pak->numfiles;
+
+	search         = Z_Malloc(sizeof(searchpath_t));
+	search->pack   = pak;
+	search->next   = fs_searchpaths;
+	fs_searchpaths = search;
+}
 
 /**
  * @brief paksort
@@ -3831,7 +3996,7 @@ qboolean FS_VerifyOfficialPaks(void)
 		}
 
 		// assumed we have a valid client installation and the server has installed
-		// genunine packs twice (f.e. in fs_homepath AND fs_basepath)
+		// genuine packs twice (f.e. in fs_homepath AND fs_basepath)
 		// in this case numOfficialPaksLocal is greater than numOfficialPaksOnServer ...
 		if (numOfficialPaksOnServer < numOfficialPaksLocal)
 		{
@@ -3840,10 +4005,8 @@ qboolean FS_VerifyOfficialPaks(void)
 
 		return qfalse;
 	}
-	else
-	{
-		return qtrue;
-	}
+
+	return qtrue;
 }
 
 /**
@@ -3907,7 +4070,6 @@ qboolean FS_InvalidGameDir(const char *gamedir)
  */
 qboolean FS_ComparePaks(char *neededpaks, size_t len, qboolean dlstring)
 {
-	searchpath_t *sp;
 	qboolean     havepak;
 	char         *origpos = neededpaks;
 	int          i;
@@ -3924,7 +4086,7 @@ qboolean FS_ComparePaks(char *neededpaks, size_t len, qboolean dlstring)
 		// Ok, see if we have this pak file
 		havepak = qfalse;
 
-		// never autodownload any of the id paks
+		// never auto download any of the id paks
 		if (FS_idPak(fs_serverReferencedPakNames[i], BASEGAME))
 		{
 			continue;
@@ -3937,19 +4099,11 @@ qboolean FS_ComparePaks(char *neededpaks, size_t len, qboolean dlstring)
 			continue;
 		}
 
-		for (sp = fs_searchpaths ; sp ; sp = sp->next)
-		{
-			if (sp->pack && sp->pack->checksum == fs_serverReferencedPaks[i])
-			{
-				havepak = qtrue; // This is it!
-				break;
-			}
-		}
+		havepak = FS_HasPack(fs_serverReferencedPaks[i]);
 
 		if (!havepak && fs_serverReferencedPakNames[i] && *fs_serverReferencedPakNames[i])
 		{
 			// Don't got it
-
 			if (dlstring)
 			{
 				// We need this to make sure we won't hit the end of the buffer or the server could
@@ -3966,7 +4120,7 @@ qboolean FS_ComparePaks(char *neededpaks, size_t len, qboolean dlstring)
 				// Local name
 				Q_strcat(neededpaks, len, "@");
 				// Do we have one with the same name?
-				if (FS_SV_FileExists(va("%s.pk3", fs_serverReferencedPakNames[i])))
+				if (FS_SV_FileExists(va("%s.pk3", fs_serverReferencedPakNames[i]), qfalse))
 				{
 					char st[MAX_ZPATH];
 					// We already have one called this, we need to download it to another name
@@ -3993,7 +4147,7 @@ qboolean FS_ComparePaks(char *neededpaks, size_t len, qboolean dlstring)
 				Q_strcat(neededpaks, len, fs_serverReferencedPakNames[i]);
 				Q_strcat(neededpaks, len, ".pk3");
 				// Do we have one with the same name?
-				if (FS_SV_FileExists(va("%s.pk3", fs_serverReferencedPakNames[i])))
+				if (FS_SV_FileExists(va("%s.pk3", fs_serverReferencedPakNames[i]), qfalse))
 				{
 					Q_strcat(neededpaks, len, " (local file exists with wrong checksum)");
 #ifndef DEDICATED
@@ -4132,7 +4286,7 @@ static void FS_AddBothGameDirectories(const char *subpath)
 		// NOTE: same filtering below for mods and basegame
 		FS_AddGameDirectory(fs_basepath->string, subpath);
 
-		if (fs_homepath->string[0] && Q_stricmp(fs_homepath->string, fs_basepath->string))
+		if (fs_homepath->string[0] && !FS_IsSamePath(fs_homepath->string, fs_basepath->string))
 		{
 			FS_AddGameDirectory(fs_homepath->string, subpath);
 #if defined(FEATURE_PAKISOLATION) && !defined(DEDICATED)
@@ -4143,6 +4297,39 @@ static void FS_AddBothGameDirectories(const char *subpath)
 				Com_sprintf(contPath, sizeof(contPath), "%s%c%s", subpath, PATH_SEP, FS_CONTAINER);
 				FS_AddGameDirectory(fs_homepath->string, contPath);
 				Q_strncpyz(fs_gamedir, subpath, sizeof(fs_gamedir));
+			}
+			// We are in a non pure server, so just try to mount the minimal required packs
+			else if(fs_numServerReferencedPaks && (!Q_stricmp(subpath, BASEGAME) || (!Q_stricmp(subpath, DEFAULT_MODGAME) && fs_containerMount->integer)))
+			{
+				int i = 0;
+				for (i = 0 ; i < fs_numServerReferencedPaks ; i++)
+				{
+					// Do we have the pack already
+					if (FS_HasPack(fs_serverReferencedPaks[i]))
+					{
+						continue;
+					}
+
+					if (!fs_serverReferencedPakNames[i] || !*fs_serverReferencedPakNames[i])
+					{
+						Com_DPrintf("Missing package name for checksum: %i\n", fs_serverReferencedPaks[i]);
+						continue;
+					}
+
+					char *packName = strchr(fs_serverReferencedPakNames[i], '/');
+					if (packName && (packName += 1))
+					{
+						char tmpPath[MAX_OSPATH] = { '\0' };
+						char *path = FS_BuildOSPath(fs_homepath->string, subpath, va("%s%c%s.pk3", FS_CONTAINER, PATH_SEP, packName));
+						Q_strcpy(tmpPath, path);
+
+						if (FS_FileInPathExists(tmpPath) && FS_CompareZipChecksum(tmpPath, fs_serverReferencedPaks[i]))
+						{
+							Com_DPrintf("Found referenced pack in container: %s\n", fs_serverReferencedPakNames[i]);
+							FS_AddPackToPath(tmpPath, BASEGAME);
+						}
+					}
+				}
 			}
 #endif
 		}
@@ -4237,7 +4424,6 @@ static void FS_Startup(const char *gameName)
 
 #ifndef DEDICATED
 	// clients: don't start if base == home, so downloads won't overwrite original files! DO NOT CHANGE!
-	//if (FS_PathCmp(fs_homepath->string, fs_basepath->string) == 0)
 	if (FS_IsSamePath(fs_homepath->string, fs_basepath->string))
 	{
 		Com_Error(ERR_FATAL, "FS_Startup: fs_homepath and fs_basepath are equal - set different paths!");
@@ -4572,7 +4758,7 @@ void FS_PureServerSetLoadedPaks(const char *pakSums, const char *pakNames)
 
 	for (i = 0 ; i < c ; i++)
 	{
-		fs_serverPaks[i] = atoi(Cmd_Argv(i));
+		fs_serverPaks[i] = Q_atoi(Cmd_Argv(i));
 	}
 
 	if (fs_numServerPaks)
@@ -4644,7 +4830,7 @@ void FS_PureServerSetReferencedPaks(const char *pakSums, const char *pakNames)
 
 	for (i = 0 ; i < c ; i++)
 	{
-		fs_serverReferencedPaks[i] = atoi(Cmd_Argv(i));
+		fs_serverReferencedPaks[i] = Q_atoi(Cmd_Argv(i));
 	}
 
 	for (i = 0 ; i < ARRAY_LEN(fs_serverReferencedPakNames); i++)
@@ -4833,6 +5019,10 @@ void FS_Restart(int checksumFeed)
 
 				// exec the config
 				Cbuf_AddText(va("exec profiles/%s/%s\n", cl_profileStr, CONFIG_NAME));
+			}
+			else
+			{
+				Cbuf_AddText(va("exec %s\n", CONFIG_NAME));
 			}
 		}
 	}
@@ -5041,7 +5231,7 @@ qboolean FS_UnzipTo(const char *fileName, const char *outpath, qboolean quiet)
 	qboolean        isUnZipOK = qtrue;
 
 	Com_sprintf(zipPath, sizeof(zipPath), "%s", fileName);
-	zipFile = unzOpen(zipPath);
+	zipFile = FS_UnzOpen(zipPath);
 
 	if (!zipFile)
 	{

@@ -166,6 +166,7 @@ void AssetCache(void)
 
 	//Com_Printf("Menu Size: %i bytes\n", sizeof(Menus));
 	uiInfo.uiDC.Assets.gradientBar         = trap_R_RegisterShaderNoMip(ASSET_GRADIENTBAR);
+	uiInfo.uiDC.Assets.gradientRound       = trap_R_RegisterShaderNoMip(ASSET_GRADIENTROUND);
 	uiInfo.uiDC.Assets.fxBasePic           = trap_R_RegisterShaderNoMip(ART_FX_BASE);
 	uiInfo.uiDC.Assets.fxPic[0]            = trap_R_RegisterShaderNoMip(ART_FX_RED);
 	uiInfo.uiDC.Assets.fxPic[1]            = trap_R_RegisterShaderNoMip(ART_FX_YELLOW);
@@ -1301,6 +1302,11 @@ void UI_LoadMenus(const char *menuFile, qboolean reset)
 	{
 		trap_PC_AddGlobalDefine("ETLEGACY");
 	}
+
+#ifdef __ANDROID__
+	// Show the UI a bit differently on mobile devices
+	trap_PC_AddGlobalDefine("ANDROID");
+#endif
 
 	trap_PC_AddGlobalDefine(va("__WINDOW_WIDTH %f", (uiInfo.uiDC.glconfig.windowAspect / RATIO43) * 640));
 	trap_PC_AddGlobalDefine("__WINDOW_HEIGHT 480");
@@ -2823,11 +2829,11 @@ static int UI_OwnerDrawWidth(int ownerDraw, float scale)
 	case UI_KEYBINDSTATUS:
 		if (Display_KeyBindPending())
 		{
-			s = trap_TranslateString("Waiting for new key... Press ESCAPE to cancel");
+			s = __("Waiting for new key... Press ESCAPE to cancel");
 		}
 		else
 		{
-			s = trap_TranslateString("Press ENTER or CLICK to change, Press BACKSPACE to clear");
+			s = __("Press ENTER or CLICK to change, Press BACKSPACE to clear");
 		}
 		break;
 	case UI_SERVERREFRESHDATE:
@@ -2895,9 +2901,9 @@ static void UI_BuildPlayerList(void)
 	trap_GetConfigString(CS_PLAYERS + cs.clientNum, info, MAX_INFO_STRING);
 	uiInfo.playerNumber = cs.clientNum;
 	uiInfo.teamLeader   = (qboolean)(atoi(Info_ValueForKey(info, "tl")));
-	team                = atoi(Info_ValueForKey(info, "t"));
+	team                = Q_atoi(Info_ValueForKey(info, "t"));
 	trap_GetConfigString(CS_SERVERINFO, info, sizeof(info));
-	count              = atoi(Info_ValueForKey(info, "sv_maxclients"));
+	count              = Q_atoi(Info_ValueForKey(info, "sv_maxclients"));
 	uiInfo.playerCount = 0;
 	uiInfo.myTeamCount = 0;
 	playerTeamNumber   = 0;
@@ -2911,7 +2917,7 @@ static void UI_BuildPlayerList(void)
 			// dont expand colors twice, so: foo^^xbar -> foo^bar -> fooar
 			//Q_CleanStr( namebuf );
 			Q_strncpyz(uiInfo.playerNames[uiInfo.playerCount], namebuf, sizeof(uiInfo.playerNames[0]));
-			muted = atoi(Info_ValueForKey(info, "mu"));
+			muted = Q_atoi(Info_ValueForKey(info, "mu"));
 			if (muted)
 			{
 				uiInfo.playerMuted[uiInfo.playerCount] = qtrue;
@@ -2920,10 +2926,10 @@ static void UI_BuildPlayerList(void)
 			{
 				uiInfo.playerMuted[uiInfo.playerCount] = qfalse;
 			}
-			uiInfo.playerRefereeStatus[uiInfo.playerCount]     = atoi(Info_ValueForKey(info, "ref"));
-			uiInfo.playerShoutcasterStatus[uiInfo.playerCount] = atoi(Info_ValueForKey(info, "sc"));
+			uiInfo.playerRefereeStatus[uiInfo.playerCount]     = Q_atoi(Info_ValueForKey(info, "ref"));
+			uiInfo.playerShoutcasterStatus[uiInfo.playerCount] = Q_atoi(Info_ValueForKey(info, "sc"));
 			uiInfo.playerCount++;
-			team2 = atoi(Info_ValueForKey(info, "t"));
+			team2 = Q_atoi(Info_ValueForKey(info, "t"));
 			if (team2 == team)
 			{
 				Q_strncpyz(namebuf, Info_ValueForKey(info, "n"), sizeof(namebuf));
@@ -2992,11 +2998,11 @@ static void UI_DrawServerRefreshDate(rectDef_t *rect, float scale, vec4_t color,
 		serverCount = trap_LAN_GetServerCount(ui_netSource.integer);
 		if (serverCount >= 0)
 		{
-			Text_Paint(rect->x, rect->y, scale, newColor, va(trap_TranslateString("Getting info for %d servers (ESC to cancel)"), serverCount), 0, 0, textStyle);
+			Text_Paint(rect->x, rect->y, scale, newColor, va(__("Getting info for %d servers (ESC to cancel)"), serverCount), 0, 0, textStyle);
 		}
 		else
 		{
-			Text_Paint(rect->x, rect->y, scale, newColor, trap_TranslateString("Waiting for response from Master Server"), 0, 0, textStyle);
+			Text_Paint(rect->x, rect->y, scale, newColor, __("Waiting for response from Master Server"), 0, 0, textStyle);
 		}
 	}
 	else
@@ -3004,7 +3010,7 @@ static void UI_DrawServerRefreshDate(rectDef_t *rect, float scale, vec4_t color,
 		char buff[64];
 
 		Q_strncpyz(buff, UI_Cvar_VariableString(va("ui_lastServerRefresh_%i", ui_netSource.integer)), 64);
-		Text_Paint(rect->x, rect->y, scale, color, va(trap_TranslateString("Refresh Time: %s"), buff), 0, 0, textStyle);
+		Text_Paint(rect->x, rect->y, scale, color, va(__("Refresh Time: %s"), buff), 0, 0, textStyle);
 	}
 }
 
@@ -3106,11 +3112,11 @@ static void UI_DrawKeyBindStatus(rectDef_t *rect, float scale, vec4_t color, int
 {
 	if (Display_KeyBindPending())
 	{
-		Text_Paint(rect->x + text_x, rect->y + text_y, scale, color, trap_TranslateString("Waiting for new key... Press ESCAPE to cancel"), 0, 0, textStyle);
+		Text_Paint(rect->x + text_x, rect->y + text_y, scale, color, __("Waiting for new key... Press ESCAPE to cancel"), 0, 0, textStyle);
 	}
 	else
 	{
-		Text_Paint(rect->x + text_x, rect->y + text_y, scale, color, trap_TranslateString("Press ENTER or CLICK to change, Press BACKSPACE to clear"), 0, 0, textStyle);
+		Text_Paint(rect->x + text_x, rect->y + text_y, scale, color, __("Press ENTER or CLICK to change, Press BACKSPACE to clear"), 0, 0, textStyle);
 	}
 }
 
@@ -4183,36 +4189,85 @@ static void UI_LoadMovies(void)
  */
 static void UI_LoadDemos(void)
 {
-	char demolist[30000];
+	char fileList[30000];
 	char demoExt[32];
-	char *demoname;
+	char path[MAX_OSPATH];
+	char *fileName;
+	int  count = 0;
 
-	Com_sprintf(demoExt, sizeof(demoExt), "dm_%d", (int)(trap_Cvar_VariableValue("protocol")));
+	uiInfo.demos.count = 0;
+	// uiInfo.demos.index = 0;
 
-	uiInfo.demoCount = trap_FS_GetFileList("demos", demoExt, demolist, sizeof(demolist));
+	Com_sprintf(path, sizeof(path), "demos");
+	if (uiInfo.demos.path[0])
+	{
+		Q_strcat(path, sizeof(path), va("/%s", uiInfo.demos.path));
 
-	Com_sprintf(demoExt, sizeof(demoExt), ".dm_%d", (int)(trap_Cvar_VariableValue("protocol")));
+		// If we are already checking a subdirectory then show a parent path selector
+		uiInfo.demos.items[0].path = String_Alloc("^2..");
+		uiInfo.demos.items[0].file = qfalse;
+		uiInfo.demos.count++;
+	}
 
-	if (uiInfo.demoCount)
+	Com_DPrintf("Loading demos from path: %s\n", path);
+
+	// Load folder list
+	count = trap_FS_GetFileList(path, "/", fileList, sizeof(fileList));
+	if (count)
 	{
 		int    i;
 		size_t len;
 
-		if (uiInfo.demoCount > MAX_DEMOS)
+		if ((uiInfo.demos.count + count) > MAX_DEMOS)
 		{
-			uiInfo.demoCount = MAX_DEMOS;
+			count = MAX_DEMOS - uiInfo.demos.count;
 		}
-		demoname = demolist;
-		for (i = 0; i < uiInfo.demoCount; i++)
+
+		fileName = fileList;
+		for (i = 0; i < count; i++)
 		{
-			len = strlen(demoname);
-			if (!Q_stricmp(demoname +  len - strlen(demoExt), demoExt))
+			len = strlen(fileName);
+
+			// Skip . and .. and hidden folders in unix
+			if (len && fileName[0] != '.')
 			{
-				demoname[len - strlen(demoExt)] = '\0';
+				uiInfo.demos.items[uiInfo.demos.count].path = String_Alloc(va("^2%s", fileName));
+				uiInfo.demos.items[uiInfo.demos.count].file = qfalse;
+				uiInfo.demos.count++;
 			}
-			uiInfo.demoList[i] = String_Alloc(demoname);
-			demoname          += len + 1;
+
+			fileName += len + 1;
 		}
+	}
+
+	// Load file list
+	Com_sprintf(demoExt, sizeof(demoExt), "dm_%d", (int)(trap_Cvar_VariableValue("protocol")));
+	count = trap_FS_GetFileList(path, demoExt, fileList, sizeof(fileList));
+	Com_sprintf(demoExt, sizeof(demoExt), ".dm_%d", (int)(trap_Cvar_VariableValue("protocol")));
+
+	if (count)
+	{
+		int    i;
+		size_t len;
+
+		if ((uiInfo.demos.count + count) > MAX_DEMOS)
+		{
+			count = MAX_DEMOS - uiInfo.demos.count;
+		}
+		fileName = fileList;
+		for (i = 0; i < count; i++)
+		{
+			len = strlen(fileName);
+			if (!Q_stricmp(fileName + len - strlen(demoExt), demoExt))
+			{
+				fileName[len - strlen(demoExt)] = '\0';
+			}
+			uiInfo.demos.items[uiInfo.demos.count + i].path = String_Alloc(fileName);
+			uiInfo.demos.items[uiInfo.demos.count + i].file = qtrue;
+			fileName                                       += len + 1;
+		}
+
+		uiInfo.demos.count += count;
 	}
 }
 
@@ -4362,6 +4417,25 @@ void UI_GLCustom()
 	trap_Cvar_Set("ui_glCustom", "1");
 }
 
+static const char *UI_GetDemoPath(qboolean prefix)
+{
+	static char path[MAX_OSPATH];
+	path[0] = '\0';
+
+	if (prefix)
+	{
+		Com_sprintf(path, sizeof(path), "demos/");
+	}
+
+	if (uiInfo.demos.path[0])
+	{
+		Q_strcat(path, sizeof(path), va("%s/", uiInfo.demos.path));
+	}
+
+	Q_strcat(path, sizeof(path), uiInfo.demos.items[uiInfo.demos.index].path);
+
+	return path;
+}
 
 /**
  * @brief UI_RunMenuScript
@@ -4509,6 +4583,8 @@ void UI_RunMenuScript(char **args)
 		}
 		else if (Q_stricmp(name, "LoadDemos") == 0)
 		{
+			// Reset the path
+			uiInfo.demos.path[0] = '\0';
 			UI_LoadDemos();
 		}
 		else if (Q_stricmp(name, "LoadMovies") == 0)
@@ -4534,16 +4610,47 @@ void UI_RunMenuScript(char **args)
 		}
 		else if (Q_stricmp(name, "RunDemo") == 0)
 		{
-			if (uiInfo.demoIndex >= 0 && uiInfo.demoIndex < uiInfo.demoCount)
+			if (uiInfo.demos.index >= 0 && uiInfo.demos.index < uiInfo.demos.count)
 			{
-				trap_Cmd_ExecuteText(EXEC_APPEND, va("demo \"%s\"\n", uiInfo.demoList[uiInfo.demoIndex]));
+				// Is a folder selector
+				if (!uiInfo.demos.items[uiInfo.demos.index].file)
+				{
+					// is a parent path?
+					if (!strcmp(&uiInfo.demos.items[uiInfo.demos.index].path[2], ".."))
+					{
+						char *last = strrchr(uiInfo.demos.path, '/');
+						if (last)
+						{
+							last[0] = '\0';
+						}
+						else
+						{
+							uiInfo.demos.path[0] = '\0';
+						}
+					}
+					else if (uiInfo.demos.path[0])
+					{
+						Q_strcat(uiInfo.demos.path, sizeof(uiInfo.demos.path),
+						         va("/%s", &uiInfo.demos.items[uiInfo.demos.index].path[2]));
+					}
+					else
+					{
+						Com_sprintf(uiInfo.demos.path, sizeof(uiInfo.demos.path),
+						            "%s", &uiInfo.demos.items[uiInfo.demos.index].path[2]);
+					}
+					UI_LoadDemos();
+				}
+				else
+				{
+					trap_Cmd_ExecuteText(EXEC_APPEND, va("demo \"%s\"\n", UI_GetDemoPath(qfalse)));
+				}
 			}
 		}
 		else if (Q_stricmp(name, "deleteDemo") == 0)
 		{
-			if (uiInfo.demoIndex >= 0 && uiInfo.demoIndex < uiInfo.demoCount)
+			if (uiInfo.demos.index >= 0 && uiInfo.demos.index < uiInfo.demos.count && uiInfo.demos.items[uiInfo.demos.index].file)
 			{
-				trap_FS_Delete(va("demos/%s.dm_%d", uiInfo.demoList[uiInfo.demoIndex], (int)(trap_Cvar_VariableValue("protocol"))));
+				trap_FS_Delete(va("%s.dm_%d", UI_GetDemoPath(qtrue), (int)(trap_Cvar_VariableValue("protocol"))));
 			}
 		}
 		else if (Q_stricmp(name, "closeJoin") == 0)
@@ -4619,7 +4726,7 @@ void UI_RunMenuScript(char **args)
 				else
 				{
 					// we can't close the menu from here, it's not open yet .. (that's the onOpen script)
-					Com_Printf("%s", trap_TranslateString("Can't show Server Info (not found, or local server)\n"));
+					Com_Printf("%s", __("Can't show Server Info (not found, or local server)\n"));
 				}
 			}
 		}
@@ -4829,7 +4936,7 @@ void UI_RunMenuScript(char **args)
 			trap_Cvar_Set("ui_voteWarmupDamage", va("%d", ((atoi(info) & CV_SVS_WARMUPDMG) >> 2)));
 
 			trap_GetConfigString(CS_SERVERINFO, info, sizeof(info));
-			trap_Cvar_Set("ui_voteTimelimit", va("%i", atoi(Info_ValueForKey(info, "timelimit"))));
+			trap_Cvar_Set("ui_voteTimelimit", va("%i", Q_atoi(Info_ValueForKey(info, "timelimit"))));
 
 		}
 		else if (Q_stricmp(name, "voteLeader") == 0)
@@ -4858,17 +4965,17 @@ void UI_RunMenuScript(char **args)
 					if (res == 0)
 					{
 						// server already in the list
-						Com_Printf("%s", trap_TranslateString("Favorite already in list\n"));
+						Com_Printf("%s", __("Favorite already in list\n"));
 					}
 					else if (res == -1)
 					{
 						// list full
-						Com_Printf("%s", trap_TranslateString("Favorite list full\n"));
+						Com_Printf("%s", __("Favorite list full\n"));
 					}
 					else
 					{
 						// successfully added
-						Com_Printf(trap_TranslateString("Added favorite server %s\n"), addr);
+						Com_Printf(__("Added favorite server %s\n"), addr);
 					}
 				}
 			}
@@ -4912,17 +5019,17 @@ void UI_RunMenuScript(char **args)
 					if (res == 0)
 					{
 						// server already in the list
-						Com_Printf("%s", trap_TranslateString("Favorite already in list\n"));
+						Com_Printf("%s", __("Favorite already in list\n"));
 					}
 					else if (res == -1)
 					{
 						// list full
-						Com_Printf("%s", trap_TranslateString("Favorite list full\n"));
+						Com_Printf("%s", __("Favorite list full\n"));
 					}
 					else
 					{
 						// successfully added
-						Com_Printf(trap_TranslateString("Added favorite server %s\n"), addr);
+						Com_Printf(__("Added favorite server %s\n"), addr);
 					}
 				}
 			}
@@ -4947,23 +5054,23 @@ void UI_RunMenuScript(char **args)
 				if (res == 0)
 				{
 					// server already in the list
-					Com_Printf("%s", trap_TranslateString("Favorite already in list\n"));
+					Com_Printf("%s", __("Favorite already in list\n"));
 				}
 				else if (res == -1)
 				{
 					// list full
-					Com_Printf("%s", trap_TranslateString("Favorite list full\n"));
+					Com_Printf("%s", __("Favorite list full\n"));
 				}
 				else
 				{
 					trap_Cvar_SetValue("cg_ui_favorite", 1);
 					// successfully added
-					Com_Printf(trap_TranslateString("Added favorite server %s\n"), addr);
+					Com_Printf(__("Added favorite server %s\n"), addr);
 				}
 			}
 			else
 			{
-				Com_Printf("%s", trap_TranslateString("Can't add localhost to favorites\n"));
+				Com_Printf("%s", __("Can't add localhost to favorites\n"));
 			}
 		}
 		else if (Q_stricmp(name, "removeFavoriteIngame") == 0)
@@ -4980,11 +5087,11 @@ void UI_RunMenuScript(char **args)
 				trap_LAN_RemoveServer(AS_FAVORITES, addr);
 				trap_Cvar_SetValue("cg_ui_favorite", 0);
 				// successfully removed
-				Com_Printf(trap_TranslateString("Removed favorite server %s\n"), addr);
+				Com_Printf(__("Removed favorite server %s\n"), addr);
 			}
 			else
 			{
-				Com_Printf("%s", trap_TranslateString("Can't remove localhost from favorites\n"));
+				Com_Printf("%s", __("Can't remove localhost from favorites\n"));
 			}
 		}
 		else if (Q_stricmp(name, "orders") == 0)
@@ -5504,6 +5611,13 @@ void UI_RunMenuScript(char **args)
 			{
 				trap_openURL(PRODUCT_URL);
 			}
+		}
+		else if (Q_stricmp(name, "open_homepath") == 0)
+		{
+			// trap_Cmd_ExecuteText(EXEC_APPEND, "open_homepath");
+			char tmp[MAX_OSPATH];
+			trap_Cvar_VariableStringBuffer("fs_homepath", tmp, MAX_OSPATH);
+			trap_openURL(tmp);
 		}
 		else if (Q_stricmp(name, "clientCheckVote") == 0)
 		{
@@ -6237,7 +6351,7 @@ static void UI_BuildServerDisplayList(qboolean force)
 			trap_LAN_GetServerInfo(ui_netSource.integer, i, info, MAX_STRING_CHARS);
 
 			// drop obvious phony servers
-			maxClients = atoi(Info_ValueForKey(info, "sv_maxclients"));
+			maxClients = Q_atoi(Info_ValueForKey(info, "sv_maxclients"));
 			if (maxClients > MAX_CLIENTS && !(ui_serverBrowserSettings.integer & UI_BROWSER_ALLOW_MAX_CLIENTS))
 			{
 				uiInfo.serverStatus.numIncompatibleServers++;
@@ -6246,7 +6360,7 @@ static void UI_BuildServerDisplayList(qboolean force)
 			}
 
 			// don't show PunkBuster servers for ET: Legacy
-			punkbuster = atoi(Info_ValueForKey(info, "punkbuster"));
+			punkbuster = Q_atoi(Info_ValueForKey(info, "punkbuster"));
 			if (punkbuster)
 			{
 				uiInfo.serverStatus.numIncompatibleServers++;
@@ -6269,7 +6383,7 @@ static void UI_BuildServerDisplayList(qboolean force)
 			trap_Cvar_Update(&ui_browserShowEmptyOrFull);
 			if (ui_browserShowEmptyOrFull.integer)
 			{
-				clients = atoi(Info_ValueForKey(info, "clients"));
+				clients = Q_atoi(Info_ValueForKey(info, "clients"));
 
 				if (clients < maxClients && (
 						(!clients && ui_browserShowEmptyOrFull.integer == 2) ||
@@ -6291,7 +6405,7 @@ static void UI_BuildServerDisplayList(qboolean force)
 			trap_Cvar_Update(&ui_browserShowPasswordProtected);
 			if (ui_browserShowPasswordProtected.integer)
 			{
-				password = atoi(Info_ValueForKey(info, "needpass"));
+				password = Q_atoi(Info_ValueForKey(info, "needpass"));
 				if ((password && ui_browserShowPasswordProtected.integer == 2) ||
 				    (!password && ui_browserShowPasswordProtected.integer == 1))
 				{
@@ -6303,7 +6417,7 @@ static void UI_BuildServerDisplayList(qboolean force)
 			trap_Cvar_Update(&ui_browserShowFriendlyFire);
 			if (ui_browserShowFriendlyFire.integer)
 			{
-				friendlyFire = atoi(Info_ValueForKey(info, "friendlyFire"));
+				friendlyFire = Q_atoi(Info_ValueForKey(info, "friendlyFire"));
 
 				if ((friendlyFire && ui_browserShowFriendlyFire.integer == 2) ||
 				    (!friendlyFire && ui_browserShowFriendlyFire.integer == 1))
@@ -6316,7 +6430,7 @@ static void UI_BuildServerDisplayList(qboolean force)
 			trap_Cvar_Update(&ui_browserShowMaxlives);
 			if (ui_browserShowMaxlives.integer)
 			{
-				maxlives = atoi(Info_ValueForKey(info, "maxlives"));
+				maxlives = Q_atoi(Info_ValueForKey(info, "maxlives"));
 				if ((maxlives && ui_browserShowMaxlives.integer == 2) ||
 				    (!maxlives && ui_browserShowMaxlives.integer == 1))
 				{
@@ -6328,7 +6442,7 @@ static void UI_BuildServerDisplayList(qboolean force)
 			trap_Cvar_Update(&ui_browserShowAntilag);
 			if (ui_browserShowAntilag.integer)
 			{
-				antilag = atoi(Info_ValueForKey(info, "g_antilag"));
+				antilag = Q_atoi(Info_ValueForKey(info, "g_antilag"));
 
 				if ((antilag && ui_browserShowAntilag.integer == 2) ||
 				    (!antilag && ui_browserShowAntilag.integer == 1))
@@ -6341,7 +6455,7 @@ static void UI_BuildServerDisplayList(qboolean force)
 			trap_Cvar_Update(&ui_browserShowWeaponsRestricted);
 			if (ui_browserShowWeaponsRestricted.integer)
 			{
-				weaponrestricted = atoi(Info_ValueForKey(info, "weaprestrict"));
+				weaponrestricted = Q_atoi(Info_ValueForKey(info, "weaprestrict"));
 
 				if ((weaponrestricted != 100 && ui_browserShowWeaponsRestricted.integer == 2) ||
 				    (weaponrestricted == 100 && ui_browserShowWeaponsRestricted.integer == 1))
@@ -6354,7 +6468,7 @@ static void UI_BuildServerDisplayList(qboolean force)
 			trap_Cvar_Update(&ui_browserShowTeamBalanced);
 			if (ui_browserShowTeamBalanced.integer)
 			{
-				balancedteams = atoi(Info_ValueForKey(info, "balancedteams"));
+				balancedteams = Q_atoi(Info_ValueForKey(info, "balancedteams"));
 
 				if ((balancedteams && ui_browserShowTeamBalanced.integer == 2) ||
 				    (!balancedteams && ui_browserShowTeamBalanced.integer == 1))
@@ -6379,7 +6493,7 @@ static void UI_BuildServerDisplayList(qboolean force)
 					continue;
 				}
 
-				humans = atoi(Info_ValueForKey(info, "humans"));
+				humans = Q_atoi(Info_ValueForKey(info, "humans"));
 
 				if ((humans == 0 && ui_browserShowHumans.integer == 1) ||
 				    (humans > 0 && ui_browserShowHumans.integer == 2))
@@ -6392,7 +6506,7 @@ static void UI_BuildServerDisplayList(qboolean force)
 			trap_Cvar_Update(&ui_joinGameType);
 			if (ui_joinGameType.integer != -1)
 			{
-				game = atoi(Info_ValueForKey(info, "gametype"));
+				game = Q_atoi(Info_ValueForKey(info, "gametype"));
 				if (game != ui_joinGameType.integer)
 				{
 					trap_LAN_MarkServerVisible(ui_netSource.integer, i, qfalse);
@@ -6539,7 +6653,7 @@ static void UI_BuildServerDisplayList(qboolean force)
 			trap_Cvar_Update(&ui_browserOssFilter);
 			if (ui_browserOssFilter.integer)
 			{
-				int g_oss = atoi(Info_ValueForKey(info, "g_oss"));
+				int g_oss = Q_atoi(Info_ValueForKey(info, "g_oss"));
 
 				if ((ui_browserOssFilter.integer & 4) && !(g_oss & 4))
 				{
@@ -6549,8 +6663,8 @@ static void UI_BuildServerDisplayList(qboolean force)
 			}
 
 			// player count after removing incompatible/filtered out servers
-			clients = atoi(Info_ValueForKey(info, "clients"));
-			humans  = atoi(Info_ValueForKey(info, "humans"));
+			clients = Q_atoi(Info_ValueForKey(info, "clients"));
+			humans  = Q_atoi(Info_ValueForKey(info, "humans"));
 
 			if ((ui_serverBrowserSettings.integer & UI_BROWSER_ALLOW_HUMANS_COUNT) &&
 			    strstr(Info_ValueForKey(info, "version"), PRODUCT_LABEL) != NULL)
@@ -6615,16 +6729,16 @@ static void UI_BuildServerDisplayList(qboolean force)
 	{
 		if (numinvisible > 0)
 		{
-			DC->setCVar("ui_tmp_ServersFiltered", va(trap_TranslateString("Filtered/Total: %03i/%03i"), numinvisible, total));
+			DC->setCVar("ui_tmp_ServersFiltered", va(__("Filtered/Total: %03i/%03i"), numinvisible, total));
 		}
 		else
 		{
-			DC->setCVar("ui_tmp_ServersFiltered", va(trap_TranslateString("^3Check your filters - no servers found!              ^9Filtered/Total: ^3%03i^9/%03i"), numinvisible, total));
+			DC->setCVar("ui_tmp_ServersFiltered", va(__("^3Check your filters - no servers found!              ^9Filtered/Total: ^3%03i^9/%03i"), numinvisible, total));
 		}
 	}
 	else
 	{
-		DC->setCVar("ui_tmp_ServersFiltered", trap_TranslateString("^1No Connection or master down - no servers found!    ^9Filtered/Total: ^1000^9/000"));
+		DC->setCVar("ui_tmp_ServersFiltered", __("^1No Connection or master down - no servers found!    ^9Filtered/Total: ^1000^9/000"));
 	}
 }
 
@@ -6963,7 +7077,7 @@ static int UI_FeederCount(int feederID)
 	case FEEDER_MODS:
 		return uiInfo.modCount;
 	case FEEDER_DEMOS:
-		return uiInfo.demoCount;
+		return uiInfo.demos.count;
 	default:
 		return 0;
 	}
@@ -7161,7 +7275,8 @@ const char *UI_FeederItemText(int feederID, int index, int column, qhandle_t *ha
 	{
 		if (index >= 0 && index < uiInfo.serverStatus.numDisplayServers)
 		{
-			int ping, game, antilag, needpass, friendlyfire, maxlives, weaponrestrictions, balancedteams, serverload, clients, maxclients;
+			int ping, game, antilag, needpass, friendlyfire, maxlives, weaponrestrictions, balancedteams, serverload;
+			int clients, humans, maxclients, privateclients;
 
 			if (lastColumn != column || lastTime > uiInfo.uiDC.realTime + 5000)
 			{
@@ -7169,7 +7284,7 @@ const char *UI_FeederItemText(int feederID, int index, int column, qhandle_t *ha
 				lastColumn = column;
 				lastTime   = uiInfo.uiDC.realTime;
 			}
-			ping = atoi(Info_ValueForKey(info, "ping"));
+			ping = Q_atoi(Info_ValueForKey(info, "ping"));
 
 			switch (column)
 			{
@@ -7221,27 +7336,49 @@ const char *UI_FeederItemText(int feederID, int index, int column, qhandle_t *ha
 			case SORT_MAP:
 				return Info_ValueForKey(info, "mapname");
 			case SORT_CLIENTS:
-				clients    = atoi(Info_ValueForKey(info, "clients"));
-				maxclients = atoi(Info_ValueForKey(info, "sv_maxclients"));
-				int humans = atoi(Info_ValueForKey(info, "humans"));
+				clients        = Q_atoi(Info_ValueForKey(info, "clients"));
+				humans         = Q_atoi(Info_ValueForKey(info, "humans"));
+				maxclients     = Q_atoi(Info_ValueForKey(info, "sv_maxclients"));
+				privateclients = Q_atoi(Info_ValueForKey(info, "sv_privateclients"));
 
 				if ((ui_serverBrowserSettings.integer & UI_BROWSER_ALLOW_HUMANS_COUNT) &&
 				    strstr(Info_ValueForKey(info, "version"), PRODUCT_LABEL) != NULL)
 				{
-					Com_sprintf(clientBuff, sizeof(clientBuff), "^W%i^9(+%i)/%i", humans, clients - humans, maxclients);
+					if (privateclients > 0)
+					{
+						Com_sprintf(clientBuff, sizeof(clientBuff), "^W%i^9(+%i)/%i^3+%i", humans, clients - humans, maxclients, privateclients);
+					}
+					else
+					{
+						Com_sprintf(clientBuff, sizeof(clientBuff), "^W%i^9(+%i)/%i", humans, clients - humans, maxclients);
+					}
 				}
 				else if (Q_stristr(Info_ValueForKey(info, "game"), "legacy") != 0 &&
 				         strstr(Info_ValueForKey(info, "version"), PRODUCT_LABEL) != NULL)
 				{
-					Com_sprintf(clientBuff, sizeof(clientBuff), "^W%i^9(+%i)/%i", humans, clients - humans, maxclients);
+					if (privateclients > 0)
+					{
+						Com_sprintf(clientBuff, sizeof(clientBuff), "^W%i^9(+%i)/%i^3+%i", humans, clients - humans, maxclients, privateclients);
+					}
+					else
+					{
+						Com_sprintf(clientBuff, sizeof(clientBuff), "^W%i^9(+%i)/%i", humans, clients - humans, maxclients);
+					}
 				}
 				else
 				{
-					Com_sprintf(clientBuff, sizeof(clientBuff), "%i/%i", clients, maxclients);
+					if (privateclients > 0)
+					{
+						Com_sprintf(clientBuff, sizeof(clientBuff), "%i/%i^3+%i", clients, maxclients, privateclients);
+					}
+					else
+					{
+						Com_sprintf(clientBuff, sizeof(clientBuff), "%i/%i", clients, maxclients);
+					}
 				}
 				return clientBuff;
 			case SORT_GAME:
-				game = atoi(Info_ValueForKey(info, "gametype"));
+				game = Q_atoi(Info_ValueForKey(info, "gametype"));
 
 				// TODO: need some cleanup
 				if (ping > /*=*/ 0 && game >= 0 && game < uiInfo.numGameTypes)
@@ -7270,7 +7407,7 @@ const char *UI_FeederItemText(int feederID, int index, int column, qhandle_t *ha
 				}
 				else
 				{
-					serverload = atoi(Info_ValueForKey(info, "serverload"));
+					serverload = Q_atoi(Info_ValueForKey(info, "serverload"));
 					if (serverload == -1)
 					{
 						Com_sprintf(pingstr, sizeof(pingstr), " %3i", ping);
@@ -7298,12 +7435,12 @@ const char *UI_FeederItemText(int feederID, int index, int column, qhandle_t *ha
 				else
 				{
 					*numhandles        = 7;
-					needpass           = atoi(Info_ValueForKey(info, "needpass"));
-					friendlyfire       = atoi(Info_ValueForKey(info, "friendlyFire"));
-					maxlives           = atoi(Info_ValueForKey(info, "maxlives"));
-					weaponrestrictions = atoi(Info_ValueForKey(info, "weaprestrict"));
-					antilag            = atoi(Info_ValueForKey(info, "g_antilag"));
-					balancedteams      = atoi(Info_ValueForKey(info, "balancedteams"));
+					needpass           = Q_atoi(Info_ValueForKey(info, "needpass"));
+					friendlyfire       = Q_atoi(Info_ValueForKey(info, "friendlyFire"));
+					maxlives           = Q_atoi(Info_ValueForKey(info, "maxlives"));
+					weaponrestrictions = Q_atoi(Info_ValueForKey(info, "weaprestrict"));
+					antilag            = Q_atoi(Info_ValueForKey(info, "g_antilag"));
+					balancedteams      = Q_atoi(Info_ValueForKey(info, "balancedteams"));
 					gamename           = Info_ValueForKey(info, "game");
 
 					if (needpass)
@@ -7477,9 +7614,9 @@ const char *UI_FeederItemText(int feederID, int index, int column, qhandle_t *ha
 		}
 		break;
 	case FEEDER_DEMOS:
-		if (index >= 0 && index < uiInfo.demoCount)
+		if (index >= 0 && index < uiInfo.demos.count)
 		{
-			return uiInfo.demoList[index];
+			return uiInfo.demos.items[index].path;
 		}
 		break;
 	case FEEDER_PROFILES:
@@ -7757,7 +7894,7 @@ static void UI_FeederSelection(int feederID, int index)
 		uiInfo.previewMovie = -1;
 		break;
 	case FEEDER_DEMOS:
-		uiInfo.demoIndex = index;
+		uiInfo.demos.index = index;
 		break;
 	case FEEDER_PROFILES:
 		uiInfo.profileIndex = index;
@@ -8127,6 +8264,8 @@ void UI_Init(int etLegacyClient, int clientVersion)
 		uiInfo.uiDC.glconfig.windowAspect = (float)uiInfo.uiDC.glconfig.vidWidth / (float)uiInfo.uiDC.glconfig.vidHeight;
 	}
 
+	Com_Memset(&uiInfo.demos, 0, sizeof(uiInfo.demos));
+
 	//UI_Load();
 	uiInfo.uiDC.registerShaderNoMip   = &trap_R_RegisterShaderNoMip;
 	uiInfo.uiDC.setColor              = &trap_R_SetColor;
@@ -8190,7 +8329,7 @@ void UI_Init(int etLegacyClient, int clientVersion)
 	uiInfo.uiDC.stopCinematic         = &UI_StopCinematic;
 	uiInfo.uiDC.drawCinematic         = &UI_DrawCinematic;
 	uiInfo.uiDC.runCinematicFrame     = &UI_RunCinematicFrame;
-	uiInfo.uiDC.translateString       = &trap_TranslateString;
+	uiInfo.uiDC.translateString       = &UI_TranslateString;
 	uiInfo.uiDC.checkAutoUpdate       = &trap_CheckAutoUpdate;
 	uiInfo.uiDC.getAutoUpdate         = &trap_GetAutoUpdate;
 
@@ -8361,8 +8500,6 @@ uiMenuCommand_t UI_GetActiveMenu(void)
 	return menutype;
 }
 
-#define MISSING_FILES_MSG "The following packs are missing:"
-
 /**
  * @brief _UI_SetActiveMenu
  * @param[in] menu
@@ -8402,7 +8539,7 @@ void UI_SetActiveMenu(uiMenuCommand_t menu)
 				trap_Cvar_Set("ui_connecting", "0");
 				if (!Q_stricmpn(buf, "Invalid password", 16))
 				{
-					trap_Cvar_Set("com_errorMessage", trap_TranslateString(buf));
+					trap_Cvar_Set("com_errorMessage", __(buf));
 					Menus_ActivateByName("popupPassword", qtrue);
 				}
 				else if (strlen(buf) > 5 && !Q_stricmpn(buf, "ET://", 5) && strlen(buf) < 200)
@@ -8410,7 +8547,7 @@ void UI_SetActiveMenu(uiMenuCommand_t menu)
 					if (ui_serverBrowserSettings.integer & UI_BROWSER_ALLOW_REDIRECT)
 					{
 						Q_strncpyz(buf, buf + 5, sizeof(buf));
-						Com_Printf(trap_TranslateString("Server is full, redirect to: %s\n"), buf);
+						Com_Printf(__("Server is full, redirect to: %s\n"), buf);
 						// always prompt
 						trap_Cvar_Set("com_errorMessage", buf);
 						Menus_ActivateByName("popupServerRedirect", qtrue);
@@ -8430,7 +8567,7 @@ void UI_SetActiveMenu(uiMenuCommand_t menu)
 						pb_enable = qtrue;
 					}
 
-					trap_Cvar_Set("com_errorMessage", trap_TranslateString(buf));
+					trap_Cvar_Set("com_errorMessage", __(buf));
 					// hacky, wanted to have the printout of missing files
 					// text printing limitations force us to keep it all in a single message
 					// NOTE: this works thanks to flip flop in UI_Cvar_VariableString
@@ -8442,7 +8579,7 @@ void UI_SetActiveMenu(uiMenuCommand_t menu)
 							trap_Cvar_Set("com_errorMessage",
 							              va("%s\n\n%s\n%s",
 							                 UI_Cvar_VariableString("com_errorMessage"),
-							                 trap_TranslateString(MISSING_FILES_MSG),
+							                 __("The following packs are missing:"),
 							                 missing_files));
 						}
 					}
@@ -8674,6 +8811,7 @@ vmCvar_t ui_drawCrosshair;
 vmCvar_t ui_drawCrosshairInfo;
 vmCvar_t ui_drawCrosshairNames;
 vmCvar_t ui_drawCrosshairPickups;
+vmCvar_t ui_drawSpectatorNames;
 vmCvar_t ui_marks;
 vmCvar_t ui_autoactivate;
 
@@ -8738,6 +8876,14 @@ vmCvar_t cl_bypassMouseInput;
 
 vmCvar_t ui_serverBrowserSettings;
 
+vmCvar_t ui_cg_shoutcastDrawPlayers;
+vmCvar_t ui_cg_shoutcastDrawTeamNames;
+vmCvar_t ui_cg_shoutcastTeamName1;
+vmCvar_t ui_cg_shoutcastTeamName2;
+vmCvar_t ui_cg_shoutcastDrawHealth;
+vmCvar_t ui_cg_shoutcastGrenadeTrail;
+vmCvar_t ui_cg_shoutcastDrawMinimap;
+
 static cvarTable_t cvarTable[] =
 {
 	{ NULL,                                "ui_textfield_temp",                   "",                           CVAR_TEMP,                      0 },
@@ -8753,6 +8899,7 @@ static cvarTable_t cvarTable[] =
 	{ &ui_drawCrosshairInfo,               "cg_drawCrosshairInfo",                "3",                          CVAR_ARCHIVE,                   0 },
 	{ &ui_drawCrosshairNames,              "cg_drawCrosshairNames",               "1",                          CVAR_ARCHIVE,                   0 },
 	{ &ui_drawCrosshairPickups,            "cg_drawCrosshairPickups",             "1",                          CVAR_ARCHIVE,                   0 },
+	{ &ui_drawSpectatorNames,              "cg_drawSpectatorNames",               "2",                          CVAR_ARCHIVE,                   0 },
 	{ &ui_marks,                           "cg_markTime",                         "20000",                      CVAR_ARCHIVE,                   0 },
 	{ &ui_autoactivate,                    "cg_autoactivate",                     "1",                          CVAR_ARCHIVE,                   0 },
 
@@ -8834,6 +8981,14 @@ static cvarTable_t cvarTable[] =
 	{ &ui_cg_crosshairColor,               "cg_crosshairColor",                   "White",                      CVAR_ARCHIVE,                   0 },
 	{ &ui_cg_crosshairColorAlt,            "cg_crosshairColorAlt",                "White",                      CVAR_ARCHIVE,                   0 },
 	{ &ui_cg_crosshairSize,                "cg_crosshairSize",                    "48",                         CVAR_ARCHIVE,                   0 },
+
+	{ &ui_cg_shoutcastDrawPlayers,         "cg_shoutcastDrawPlayers",             "1",                          CVAR_ARCHIVE,                   0 },
+	{ &ui_cg_shoutcastDrawTeamNames,       "cg_shoutcastDrawTeamNames",           "1",                          CVAR_ARCHIVE,                   0 },
+	{ &ui_cg_shoutcastTeamName1,           "cg_shoutcastTeamName1",               "",                           CVAR_ARCHIVE,                   0 },
+	{ &ui_cg_shoutcastTeamName2,           "cg_shoutcastTeamName2",               "",                           CVAR_ARCHIVE,                   0 },
+	{ &ui_cg_shoutcastDrawHealth,          "cg_shoutcastDrawHealth",              "0",                          CVAR_ARCHIVE,                   0 },
+	{ &ui_cg_shoutcastGrenadeTrail,        "cg_shoutcastGrenadeTrail",            "0",                          CVAR_ARCHIVE,                   0 },
+	{ &ui_cg_shoutcastDrawMinimap,         "cg_shoutcastDrawMinimap",             "1",                          CVAR_ARCHIVE,                   0 },
 
 	// game mappings (for create server option)
 	{ NULL,                                "g_altStopwatchMode",                  "0",                          CVAR_ARCHIVE,                   0 },
@@ -8985,13 +9140,13 @@ static void UI_StopServerRefresh(void)
 	// invalid data
 	//if (uiInfo.serverStatus.numInvalidServers > 0)
 	//{
-	//	Com_Printf(trap_TranslateString("^9%d^7 servers not listed (invalid data)\n"),
+	//	Com_Printf(__("^9%d^7 servers not listed (invalid data)\n"),
 	//	           uiInfo.serverStatus.numInvalidServers);
 	//}
 
 	if (uiInfo.serverStatus.numIncompatibleServers > 0)
 	{
-		Com_Printf(trap_TranslateString("^1%d^7 servers not listed (incompatible or fake)\n"),
+		Com_Printf(__("^1%d^7 servers not listed (incompatible or fake)\n"),
 		           uiInfo.serverStatus.numIncompatibleServers);
 	}
 
@@ -9002,20 +9157,20 @@ static void UI_StopServerRefresh(void)
 
 	if (total > 0)
 	{
-		Com_Printf(trap_TranslateString("^3%d^7 servers not listed (filtered out by browser settings)\n"), total);
+		Com_Printf(__("^3%d^7 servers not listed (filtered out by browser settings)\n"), total);
 	}
 
 	// FIXME: number of humans is wrong for favorites, why?
 	if (uiInfo.serverStatus.numHumansOnServers > 0 && ui_netSource.integer != AS_FAVORITES)
 	{
-		Com_Printf(trap_TranslateString("^2%d^7 servers listed with ^3%d^7 players (including ^3%d^7 humans at least)\n"),
+		Com_Printf(__("^2%d^7 servers listed with ^3%d^7 players (including ^3%d^7 humans at least)\n"),
 		           uiInfo.serverStatus.numDisplayServers,
 		           uiInfo.serverStatus.numPlayersOnServers,
 		           uiInfo.serverStatus.numHumansOnServers);
 	}
 	else
 	{
-		Com_Printf(trap_TranslateString("^2%d^7 servers listed with ^3%d^7 players\n"),
+		Com_Printf(__("^2%d^7 servers listed with ^3%d^7 players\n"),
 		           uiInfo.serverStatus.numDisplayServers,
 		           uiInfo.serverStatus.numPlayersOnServers);
 	}
@@ -9156,13 +9311,13 @@ void UI_Campaign_f(void)
 
 	if (i == uiInfo.campaignCount || !campaign || !(campaign->typeBits & (1 << GT_WOLF)))
 	{
-		Com_Printf(trap_TranslateString("Can't find campaign '%s'\n"), str);
+		Com_Printf(__("Can't find campaign '%s'\n"), str);
 		return;
 	}
 
 	if (!campaign->mapInfos[0])
 	{
-		Com_Printf(trap_TranslateString("Corrupted campaign '%s'\n"), str);
+		Com_Printf(__("Corrupted campaign '%s'\n"), str);
 		return;
 	}
 
@@ -9196,11 +9351,11 @@ void UI_ListCampaigns_f(void)
 
 	if (mpCampaigns)
 	{
-		Com_Printf(trap_TranslateString("%i campaigns found:\n"), mpCampaigns);
+		Com_Printf(__("%i campaigns found:\n"), mpCampaigns);
 	}
 	else
 	{
-		Com_Printf("%s", trap_TranslateString("No campaigns found.\n"));
+		Com_Printf("%s", __("No campaigns found.\n"));
 		return;
 	}
 
@@ -9241,14 +9396,14 @@ void UI_ListFavourites_f(void)
 			trap_LAN_GetServerInfo(AS_FAVORITES, i, info, MAX_STRING_CHARS);
 
 			hostinfo = va("%s^7 %s", Info_ValueForKey(info, "hostname"), Info_ValueForKey(info, "game"));
-			gameinfo = va("%s %i players", Info_ValueForKey(info, "mapname"), atoi(Info_ValueForKey(info, "clients")));
+			gameinfo = va("%s %i players", Info_ValueForKey(info, "mapname"), Q_atoi(Info_ValueForKey(info, "clients")));
 
 			Com_Printf("^7#%i: %s - %s\n", i, hostinfo, gameinfo);
 		}
 	}
 	else
 	{
-		Com_Printf("%s\n", trap_TranslateString("No favourite servers found."));
+		Com_Printf("%s\n", __("No favourite servers found."));
 	}
 }
 
@@ -9259,5 +9414,19 @@ void UI_RemoveAllFavourites_f(void)
 {
 	trap_LAN_RemoveServer(AS_FAVORITES_ALL, "");
 
-	Com_Printf("%s\n", trap_TranslateString("All favourite servers removed."));
+	Com_Printf("%s\n", __("All favourite servers removed."));
+}
+
+const char *UI_TranslateString(const char *string)
+{
+	// Allows the fnc to be used twice in same context
+	static char buffer[TRANSLATION_BUFFERS][MAX_PRINT_MSG];
+	static int  buffOffset = 0;
+	char        *buf;
+
+	buf = buffer[buffOffset++ % TRANSLATION_BUFFERS];
+
+	trap_TranslateString(string, buf);
+
+	return buf;
 }

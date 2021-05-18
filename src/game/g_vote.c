@@ -394,7 +394,7 @@ int G_Gametype_v(gentity_t *ent, unsigned int dwVoteIndex, char *arg, char *arg2
 	// Vote request (vote is being initiated)
 	if (arg)
 	{
-		int i = atoi(arg2);
+		int i = Q_atoi(arg2);
 
 		if (!vote_allow_gametype.integer && ent && !ent->client->sess.referee)
 		{
@@ -507,7 +507,7 @@ int G_Kick_v(gentity_t *ent, unsigned int dwVoteIndex, char *arg, char *arg2, qb
 	else
 	{
 		// Kick a player
-		trap_SendConsoleCommand(EXEC_APPEND, va("clientkick %d\n", atoi(level.voteInfo.vote_value)));
+		trap_SendConsoleCommand(EXEC_APPEND, va("clientkick %d\n", Q_atoi(level.voteInfo.vote_value)));
 		AP(va("cp \"%s\n^3has been kicked!\n\"", level.clients[atoi(level.voteInfo.vote_value)].pers.netname));
 	}
 
@@ -575,7 +575,7 @@ int G_Mute_v(gentity_t *ent, unsigned int dwVoteIndex, char *arg, char *arg2, qb
 	}
 	else
 	{
-		int pid = atoi(level.voteInfo.vote_value);
+		int pid = Q_atoi(level.voteInfo.vote_value);
 
 		// Mute a player
 		if (level.clients[pid].sess.referee != RL_RCON)
@@ -643,7 +643,7 @@ int G_UnMute_v(gentity_t *ent, unsigned int dwVoteIndex, char *arg, char *arg2, 
 	}
 	else
 	{
-		int pid = atoi(level.voteInfo.vote_value);
+		int pid = Q_atoi(level.voteInfo.vote_value);
 
 		// Mute a player
 		if (level.clients[pid].sess.referee != RL_RCON)
@@ -943,9 +943,9 @@ int G_Nextmap_v(gentity_t *ent, unsigned int dwVoteIndex, char *arg, char *arg2,
 				// !nextmap nor nextcampaignvotes. Besides we don't want to store
 				// mapstats of an unfinished map or spend resources at generating
 				// playerstats
-				// LogExit( "Nextmap vote passed" );
+				// G_LogExit( "Nextmap vote passed" );
 				// - There is a flag for so let the users decide
-				//   Some log parsers require LogExit
+				//   Some log parsers require G_LogExit
 				AP("chat \"^3*** Nextmap vote passed - vote a new map! ***\"");
 				G_LogExit("Nextmap vote passed");
 			}
@@ -1401,7 +1401,7 @@ int G_Warmupfire_v(gentity_t *ent, unsigned int dwVoteIndex, char *arg, char *ar
 	// Vote request (vote is being initiated)
 	if (arg)
 	{
-		int i = atoi(arg2), val = (match_warmupDamage.integer < 0) ? 0 :
+		int i = Q_atoi(arg2), val = (match_warmupDamage.integer < 0) ? 0 :
 		                          (match_warmupDamage.integer > 2) ? 2 :
 		                          match_warmupDamage.integer;
 
@@ -1566,12 +1566,10 @@ void G_IntermissionMapVote(gentity_t *ent)
 	// normal one-map vote
 	if (trap_Argc() == 2)
 	{
-		int mapID;
-
 		trap_Argv(1, arg, sizeof(arg));
-		mapID = atoi(arg);
+		mapID = Q_atoi(arg);
 
-		if (mapID < 0 || mapID > MAX_VOTE_MAPS)
+		if (mapID < 0 || mapID >= MAX_VOTE_MAPS)
 		{
 			CP(va("print \"^3Invalid vote\n\""));
 			return;
@@ -1589,9 +1587,9 @@ void G_IntermissionMapVote(gentity_t *ent)
 		for (voteRank = 1; voteRank <= 3; voteRank++)
 		{
 			trap_Argv(voteRank, arg, sizeof(arg));
-			mapID = atoi(arg);
+			mapID = Q_atoi(arg);
 
-			if (mapID < 0 || mapID > MAX_VOTE_MAPS)
+			if (mapID < 0 || mapID >= MAX_VOTE_MAPS)
 			{
 				continue;
 			}

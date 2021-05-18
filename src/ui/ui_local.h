@@ -44,12 +44,11 @@
 #include "../game/bg_public.h"
 #include "ui_shared.h"
 
-#define __(x) trap_TranslateString(x)
-
 extern vmCvar_t ui_brassTime;
 extern vmCvar_t ui_drawCrosshair;
 extern vmCvar_t ui_drawCrosshairNames;
 extern vmCvar_t ui_drawCrosshairPickups;
+extern vmCvar_t ui_drawSpectatorNames;
 extern vmCvar_t ui_marks;
 
 extern vmCvar_t ui_autoactivate;
@@ -104,6 +103,14 @@ extern vmCvar_t ui_cg_crosshairSize;
 extern vmCvar_t cl_bypassMouseInput;
 
 extern vmCvar_t ui_serverBrowserSettings;
+
+extern vmCvar_t ui_cg_shoutcastDrawPlayers;
+extern vmCvar_t ui_cg_shoutcastDrawTeamNames;
+extern vmCvar_t ui_cg_shoutcastTeamName1;
+extern vmCvar_t ui_cg_shoutcastTeamName2;
+extern vmCvar_t ui_cg_shoutcastDrawHealth;
+extern vmCvar_t ui_cg_shoutcastGrenadeTrail;
+extern vmCvar_t ui_cg_shoutcastDrawMinimap;
 
 // ui_serverBrowserSettings flags
 #define UI_BROWSER_ALLOW_REDIRECT     BIT(0)
@@ -525,6 +532,20 @@ typedef struct
 	const char *modDescr;
 } modInfo_t;
 
+typedef struct
+{
+	const char *path;
+	qboolean file;
+} demoItem_t;
+
+typedef struct
+{
+	char path[MAX_OSPATH];
+	demoItem_t items[MAX_DEMOS];
+	unsigned int count;
+	unsigned int index;
+} demoList_t;
+
 /**
  * @struct uiInfo_s
  * @brief
@@ -583,9 +604,13 @@ typedef struct
 	int modCount;
 	int modIndex;
 
+	/*
+	const char demoPath[MAX_QPATH]
 	const char *demoList[MAX_DEMOS];
 	int demoCount;
 	int demoIndex;
+	*/
+	demoList_t demos;
 
 	const char *movieList[MAX_MOVIES];
 	int movieCount;
@@ -667,7 +692,7 @@ char *Binding_FromName(const char *cvar);
 
 // ui_syscalls.c
 void trap_Print(const char *fmt);
-void trap_Error(const char *fmt) __attribute__((noreturn));
+void trap_Error(const char *fmt) _attribute((noreturn));
 int trap_Milliseconds(void);
 void trap_Cvar_Register(vmCvar_t *vmCvar, const char *varName, const char *defaultValue, int flags);
 void trap_Cvar_Update(vmCvar_t *vmCvar);
@@ -765,7 +790,9 @@ void trap_GetAutoUpdate(void);
 void trap_openURL(const char *url);
 void trap_GetHunkData(int *hunkused, int *hunkexpected);
 
-const char *trap_TranslateString(const char *fmt); // localization
+// localization functions
+const char *UI_TranslateString(const char *string);
+void trap_TranslateString(const char *fmt, char *buffer);
 
 const char *UI_DescriptionForCampaign(void);
 const char *UI_NameForCampaign(void);

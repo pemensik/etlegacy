@@ -101,7 +101,7 @@ void IN_KeyDown(kbutton_t *b)
 	c = Cmd_Argv(1);
 	if (c[0])
 	{
-		k = atoi(c);
+		k = Q_atoi(c);
 	}
 	else
 	{
@@ -134,7 +134,7 @@ void IN_KeyDown(kbutton_t *b)
 
 	// save timestamp for partial frame summing
 	c           = Cmd_Argv(2);
-	b->downtime = atoi(c);
+	b->downtime = Q_atoi(c);
 
 	b->active     = qtrue;
 	b->wasPressed = qtrue;
@@ -153,7 +153,7 @@ void IN_KeyUp(kbutton_t *b)
 	c = Cmd_Argv(1);
 	if (c[0])
 	{
-		k = atoi(c);
+		k = Q_atoi(c);
 	}
 	else
 	{
@@ -184,7 +184,7 @@ void IN_KeyUp(kbutton_t *b)
 
 	// save timestamp for partial frame summing
 	c      = Cmd_Argv(2);
-	uptime = atoi(c);
+	uptime = Q_atoi(c);
 	if (uptime)
 	{
 		b->msec += uptime - b->downtime;
@@ -674,7 +674,7 @@ void IN_ButtonUp(void)
  */
 void IN_Help(void)
 {
-	if (cls.state == CA_ACTIVE && !clc.demoplaying)
+	if (cls.state == CA_ACTIVE && !clc.demo.playing)
 	{
 		VM_Call(uivm, UI_SET_ACTIVE_MENU, UIMENU_HELP);          // startup help system
 	}
@@ -1175,7 +1175,7 @@ qboolean CL_ReadyToSendPacket(void)
 	int delta;
 
 	// don't send anything if playing back a demo
-	if (clc.demoplaying || cls.state == CA_CINEMATIC)
+	if (clc.demo.playing || cls.state == CA_CINEMATIC)
 	{
 		return qfalse;
 	}
@@ -1257,7 +1257,7 @@ void CL_WritePacket(void)
 	int       count, key;
 
 	// don't send anything if playing back a demo
-	if (clc.demoplaying || cls.state == CA_CINEMATIC)
+	if (clc.demo.playing || cls.state == CA_CINEMATIC)
 	{
 		return;
 	}
@@ -1321,7 +1321,7 @@ void CL_WritePacket(void)
 		}
 
 		// begin a client move command
-		if (cl_nodelta->integer || !cl.snap.valid || clc.demowaiting
+		if (cl_nodelta->integer || !cl.snap.valid || clc.demo.waiting
 		    || clc.serverMessageSequence != cl.snap.messageNum)
 		{
 			MSG_WriteByte(&buf, clc_moveNoDelta);

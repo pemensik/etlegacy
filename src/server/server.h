@@ -225,6 +225,7 @@ typedef struct client_s
 	char lastClientCommandString[MAX_STRING_CHARS];
 	sharedEntity_t *gentity;                ///< SV_GentityNum(clientnum)
 	char name[MAX_NAME_LENGTH];             ///< extracted from userinfo, high bits masked
+	char guid[MAX_GUID_LENGTH + 1];         ///< extracted from userinfo
 
 	// downloading
 	char downloadName[MAX_QPATH];           ///< if not empty string, we are downloading
@@ -474,6 +475,8 @@ extern cvar_t *sv_demoTolerant;
 
 extern cvar_t *sv_ipMaxClients; ///< limit client connection
 
+extern cvar_t *sv_guidCheck;    ///< enable check for client guid validity
+
 //===========================================================
 
 // sv_demo.c
@@ -498,7 +501,7 @@ void SV_GentityUpdateHealthField(sharedEntity_t *gent, playerState_t *player);
 
 // sv_main.c
 void SV_FinalCommand(const char *cmd, qboolean disconnect);   ///< added disconnect flag so map changes can use this function as well
-void QDECL SV_SendServerCommand(client_t *cl, const char *fmt, ...) __attribute__ ((format(printf, 2, 3)));
+void QDECL SV_SendServerCommand(client_t *cl, const char *fmt, ...) _attribute ((format(printf, 2, 3)));
 void SV_AddOperatorCommands(void);
 void SV_RemoveOperatorCommands(void);
 void SV_MasterHeartbeat(const char *msg);

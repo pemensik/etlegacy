@@ -178,7 +178,7 @@ void SV_SetBrushModel(sharedEntity_t *ent, const char *name)
 		Com_Error(ERR_DROP, "SV_SetBrushModel: %s of #%i isn't a brush model", name, ent->s.number);
 	}
 
-	ent->s.modelindex = atoi(name + 1);
+	ent->s.modelindex = Q_atoi(name + 1);
 
 	h = CM_InlineModel(ent->s.modelindex);
 	CM_ModelBounds(h, mins, maxs);
@@ -416,6 +416,18 @@ static int FloatAsInt(float f)
 
 	fi.f = f;
 	return fi.i;
+}
+
+/**
+ * @brief Get engine value
+ * @param[out] value buffer
+ * @param[in] valueSize buffer size
+ * @param[in] key to query
+ * @return true if value for key is found
+ */
+static qboolean SV_GetValue(char *value, int valueSize, const char *key)
+{
+	return qfalse;
 }
 
 extern int S_RegisterSound(const char *name, qboolean compressed);
@@ -682,6 +694,9 @@ intptr_t SV_GameSystemCalls(intptr_t *args)
 		return SV_SendBinaryMessage(args[1], VMA(2), args[3]);
 	case G_MESSAGESTATUS:
 		return SV_BinaryMessageStatus(args[1]);
+
+	case G_TRAP_GETVALUE:
+		return SV_GetValue(VMA(1), args[2], VMA(3));
 
 	default:
 		Com_Error(ERR_DROP, "Bad game system trap: %ld", (long int) args[0]);

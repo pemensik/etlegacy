@@ -251,7 +251,7 @@ static void G_SendSkillRating(gentity_t *ent)
 
 	trap_Argv(1, buffer, sizeof(buffer));
 
-	clientNum = atoi(buffer);
+	clientNum = Q_atoi(buffer);
 	if (clientNum < 0 || clientNum > g_maxclients.integer)
 	{
 		return;
@@ -291,7 +291,7 @@ static void G_SendPrestige(gentity_t *ent)
 
 	trap_Argv(1, buffer, sizeof(buffer));
 
-	clientNum = atoi(buffer);
+	clientNum = Q_atoi(buffer);
 	if (clientNum < 0 || clientNum > g_maxclients.integer)
 	{
 		return;
@@ -634,7 +634,7 @@ int ClientNumberFromString(gentity_t *to, char *s)
 	// numeric values are just slot numbers
 	if (fIsNumber)
 	{
-		idnum = atoi(s);
+		idnum = Q_atoi(s);
 		if (idnum < 0 || idnum >= level.maxclients)
 		{
 			CPx(to - g_entities, va("print \"Bad client slot: [lof]%i\n\"", idnum));
@@ -709,7 +709,7 @@ void Cmd_Give_f(gentity_t *ent)
 	{
 		hasAmount = qtrue;
 	}
-	amount = atoi(amt);
+	amount = Q_atoi(amt);
 
 	name = ConcatArgs(1);
 
@@ -991,7 +991,7 @@ void Cmd_God_f(gentity_t *ent)
 	}
 	else
 	{
-		if (!Q_stricmp(name, "on") || atoi(name))
+		if (!Q_stricmp(name, "on") || Q_atoi(name))
 		{
 			ent->flags |= FL_GODMODE;
 		}
@@ -1032,7 +1032,7 @@ void Cmd_Nofatigue_f(gentity_t *ent)
 		return;
 	}
 
-	if (!Q_stricmp(name, "on") || atoi(name))
+	if (!Q_stricmp(name, "on") || Q_atoi(name))
 	{
 		ent->flags |= FL_NOFATIGUE;
 	}
@@ -1103,7 +1103,7 @@ void Cmd_Noclip_f(gentity_t *ent)
 		return;
 	}
 
-	if (!Q_stricmp(name, "on") || atoi(name))
+	if (!Q_stricmp(name, "on") || Q_atoi(name))
 	{
 		ent->client->noclip = qtrue;
 	}
@@ -1144,7 +1144,7 @@ void Cmd_Nostamina_f(gentity_t *ent)
 		return;
 	}
 
-	if (!Q_stricmp(name, "on") || atoi(name))
+	if (!Q_stricmp(name, "on") || Q_atoi(name))
 	{
 		ent->flags |= FL_NOSTAMINA;
 	}
@@ -1185,7 +1185,7 @@ void Cmd_Kill_f(gentity_t *ent)
 			return;
 		}
 #endif
-		trap_SendServerCommand(ent - g_entities, "cp \"You must be alive to use ^3/kill^7.\"");
+		limbo(ent, qtrue);
 		return;
 	}
 
@@ -1633,13 +1633,13 @@ qboolean SetTeam(gentity_t *ent, const char *s, qboolean force, weapon_t w1, wea
 
 	if (client->sess.sessionTeam == TEAM_AXIS || client->sess.sessionTeam == TEAM_ALLIES)
 	{
-		ent->client->inactivityTime        = level.time + (g_inactivity.integer ? g_inactivity.integer : 60) * 1000;
-		ent->client->inactivitySecondsLeft = (g_inactivity.integer) ? g_inactivity.integer : 60;
+		ent->client->inactivityTime        = level.time + G_InactivityValue * 1000;
+		ent->client->inactivitySecondsLeft = G_InactivityValue;
 	}
 	else
 	{
-		ent->client->inactivityTime        = level.time + (g_spectatorInactivity.integer ? g_spectatorInactivity.integer : 60) * 1000;
-		ent->client->inactivitySecondsLeft = (g_spectatorInactivity.integer) ? g_spectatorInactivity.integer : 60;
+		ent->client->inactivityTime        = level.time + G_SpectatorInactivityValue * 1000;
+		ent->client->inactivitySecondsLeft = G_SpectatorInactivityValue;
 	}
 
 #ifdef FEATURE_RATING
@@ -2154,8 +2154,8 @@ void Cmd_Team_f(gentity_t *ent, unsigned int dwCommand, qboolean fValue)
 	trap_Argv(3, weap, sizeof(weap));
 	trap_Argv(4, weap2, sizeof(weap2));
 
-	w  = atoi(weap);
-	w2 = atoi(weap2);
+	w  = Q_atoi(weap);
+	w2 = Q_atoi(weap2);
 
 	G_TeamDataForString(s, ent->s.clientNum, &team, &specState);
 
@@ -2169,7 +2169,7 @@ void Cmd_Team_f(gentity_t *ent, unsigned int dwCommand, qboolean fValue)
 
 	if (*ptype)
 	{
-		playerType = atoi(ptype);
+		playerType = Q_atoi(ptype);
 	}
 	else
 	{
@@ -2387,8 +2387,8 @@ void Cmd_Follow_f(gentity_t *ent, unsigned int dwCommand, qboolean fValue)
 		return;
 	}
 
-	// can't follow another spectator
-	if (level.clients[i].sess.sessionTeam == TEAM_SPECTATOR)
+	// can't follow another spectator, but shoutcasters can follow other shoutcasters
+	if (level.clients[i].sess.sessionTeam == TEAM_SPECTATOR && (!level.clients[i].sess.shoutcaster || !ent->client->sess.shoutcaster))
 	{
 		return;
 	}
@@ -2931,10 +2931,10 @@ void G_Voice(gentity_t *ent, gentity_t *target, int mode, const char *id, const 
 
 		trap_Argv(1, buffer, 32);
 
-		cls = atoi(buffer);
+		cls = Q_atoi(buffer);
 
 		trap_Argv(2, buffer, 32);
-		cnt = atoi(buffer);
+		cnt = Q_atoi(buffer);
 		if (cnt > MAX_CLIENTS)
 		{
 			cnt = MAX_CLIENTS;
@@ -2944,7 +2944,7 @@ void G_Voice(gentity_t *ent, gentity_t *target, int mode, const char *id, const 
 		{
 			trap_Argv(3 + i, buffer, 32);
 
-			num = atoi(buffer);
+			num = Q_atoi(buffer);
 			if (num < 0)
 			{
 				continue;
@@ -3042,7 +3042,7 @@ static void Cmd_Voice_f(gentity_t *ent, int mode, qboolean arg0, qboolean voiceo
 		int  index;
 
 		trap_Argv(2, bufferIndex, sizeof(bufferIndex));
-		index = atoi(bufferIndex);
+		index = Q_atoi(bufferIndex);
 		if (index < 0)
 		{
 			index = 0;
@@ -3565,7 +3565,7 @@ void Cmd_Vote_f(gentity_t *ent)
 
 	if (level.voteInfo.vote_fn == G_Kick_v)
 	{
-		int pid = atoi(level.voteInfo.vote_value);
+		int pid = Q_atoi(level.voteInfo.vote_value);
 
 		if (!g_entities[pid].client)
 		{
@@ -3622,21 +3622,42 @@ void Cmd_SetViewpos_f(gentity_t *ent)
 		trap_SendServerCommand(ent - g_entities, va("print \"Cheats are not enabled on this server.\n\""));
 		return;
 	}
-	if (trap_Argc() != 5)
+
+	if (trap_Argc() == 5)
 	{
-		trap_SendServerCommand(ent - g_entities, va("print \"usage: setviewpos x y z yaw\n\""));
+		VectorClear(angles);
+		for (i = 0; i < 3; i++)
+		{
+			trap_Argv(i + 1, buffer, sizeof(buffer));
+			origin[i] = atof(buffer);
+		}
+
+		trap_Argv(4, buffer, sizeof(buffer));
+		angles[YAW] = atof(buffer);
+	}
+	else if (trap_Argc() == 8)
+	{
+		for (i = 0; i < 3; i++)
+		{
+			trap_Argv(i + 1, buffer, sizeof(buffer));
+			origin[i] = atof(buffer);
+		}
+
+		for (i = 0; i < 3; i++)
+		{
+			trap_Argv(i + 4, buffer, sizeof(buffer));
+			angles[i] = atof(buffer);
+		}
+
+		trap_Argv(7, buffer, sizeof(buffer));
+		qboolean useViewHeight = atof(buffer);
+		origin[2] = useViewHeight ? origin[2] -= (ent->client->ps.viewheight + 1) : origin[2];  // + 1 to account for teleport event origin shift
+	}
+	else
+	{
+		trap_SendServerCommand(ent - g_entities, va("print \"usage: setviewpos x y z yaw\n       setviewpos x y z pitch yaw roll useViewHeight(1/0)\n\""));
 		return;
 	}
-
-	VectorClear(angles);
-	for (i = 0 ; i < 3 ; i++)
-	{
-		trap_Argv(i + 1, buffer, sizeof(buffer));
-		origin[i] = atof(buffer);
-	}
-
-	trap_Argv(4, buffer, sizeof(buffer));
-	angles[YAW] = atof(buffer);
 
 	TeleportPlayer(ent, origin, angles);
 }
@@ -4083,11 +4104,11 @@ void Cmd_Activate_f(gentity_t *ent)
 
 	VectorMA(offset, CH_MAX_DIST, forward, end);
 
-	trap_Trace(&tr, offset, NULL, NULL, end, ent->s.number, (CONTENTS_SOLID | CONTENTS_MISSILECLIP | CONTENTS_BODY | CONTENTS_CORPSE));
+	trap_Trace(&tr, offset, NULL, NULL, end, ent->s.number, (CONTENTS_SOLID | CONTENTS_MISSILECLIP));
 
 	if ((tr.surfaceFlags & SURF_NOIMPACT) || tr.entityNum == ENTITYNUM_WORLD)
 	{
-		trap_Trace(&tr, offset, NULL, NULL, end, ent->s.number, (CONTENTS_SOLID | CONTENTS_BODY | CONTENTS_CORPSE | CONTENTS_MISSILECLIP | CONTENTS_TRIGGER));
+		trap_Trace(&tr, offset, NULL, NULL, end, ent->s.number, (CONTENTS_SOLID | CONTENTS_MISSILECLIP | CONTENTS_TRIGGER));
 		pass2 = qtrue;
 	}
 
@@ -4106,7 +4127,7 @@ void Cmd_Activate_f(gentity_t *ent)
 		}
 
 		pass2 = qtrue;
-		trap_Trace(&tr, offset, NULL, NULL, end, ent->s.number, (CONTENTS_SOLID | CONTENTS_MISSILECLIP | CONTENTS_BODY | CONTENTS_CORPSE | CONTENTS_TRIGGER));
+		trap_Trace(&tr, offset, NULL, NULL, end, ent->s.number, (CONTENTS_SOLID | CONTENTS_MISSILECLIP | CONTENTS_TRIGGER));
 	}
 }
 
@@ -4125,7 +4146,8 @@ qboolean G_PushPlayer(gentity_t *ent, gentity_t *victim)
 		return qfalse;
 	}
 
-	if (ent->health <= 0)
+	// Both players need to be up and running like little bunnies they are.
+	if (ent->health <= 0 || victim->health <= 0)
 	{
 		return qfalse;
 	}
@@ -4237,19 +4259,19 @@ void Cmd_Activate2_f(gentity_t *ent)
 	if ((g_OmniBotFlags.integer & OBF_SHOVING) || !(ent->r.svFlags & SVF_BOT))
 	{
 #endif
-	trap_Trace(&tr, offset, NULL, NULL, end, ent->s.number, CONTENTS_BODY);
-	if (tr.entityNum >= 0)
-	{
-		gentity_t *traceEnt = &g_entities[tr.entityNum];
-
-		if (traceEnt->client)
+		trap_Trace(&tr, offset, NULL, NULL, end, ent->s.number, (CONTENTS_SOLID | CONTENTS_BODY | CONTENTS_CORPSE));
+		if (tr.entityNum >= 0)
 		{
-			G_PushPlayer(ent, traceEnt);
-			return;
+			gentity_t *traceEnt = &g_entities[tr.entityNum];
+
+			if (traceEnt->client)
+			{
+				G_PushPlayer(ent, traceEnt);
+				return;
+			}
 		}
-	}
 #ifdef FEATURE_OMNIBOT
-}
+	}
 #endif
 
 	while (!(tr.surfaceFlags & SURF_NOIMPACT) && !(tr.entityNum == ENTITYNUM_WORLD))
@@ -4330,7 +4352,7 @@ void Cmd_SetSpawnPoint_f(gentity_t *ent)
 	}
 
 	trap_Argv(1, arg, sizeof(arg));
-	val = atoi(arg);
+	val = Q_atoi(arg);
 
 	if (ent->client)
 	{
@@ -4405,7 +4427,7 @@ void Cmd_IntermissionWeaponStats_f(gentity_t *ent)
 
 	trap_Argv(1, buffer, sizeof(buffer));
 
-	clientNum = atoi(buffer);
+	clientNum = Q_atoi(buffer);
 	if (clientNum < 0 || clientNum > g_maxclients.integer)
 	{
 		return;
@@ -4734,7 +4756,7 @@ void Cmd_SelectedObjective_f(gentity_t *ent)
 		return;
 	}
 	trap_Argv(1, buffer, 16);
-	val = atoi(buffer) + 1;
+	val = Q_atoi(buffer) + 1;
 
 	for (i = 0; i < level.numLimboCams; i++)
 	{

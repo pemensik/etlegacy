@@ -364,6 +364,12 @@ vmCvar_t g_multiview; // 0 - off, other - enabled
 vmCvar_t g_stickyCharge;
 vmCvar_t g_xpSaver;
 
+vmCvar_t g_dynamiteChaining;
+
+vmCvar_t g_playerHitBoxHeight;
+
+vmCvar_t g_debugForSingleClient;
+
 cvarTable_t gameCvarTable[] =
 {
 	// don't override the cheat state set by the system
@@ -443,7 +449,7 @@ cvarTable_t gameCvarTable[] =
 	{ &g_debugMove,                       "g_debugMove",                       "0",                          0,                                               0, qfalse, qfalse },
 	{ &g_debugDamage,                     "g_debugDamage",                     "0",                          CVAR_CHEAT,                                      0, qfalse, qfalse },
 	{ &g_debugAlloc,                      "g_debugAlloc",                      "0",                          0,                                               0, qfalse, qfalse },
-	{ &g_debugBullets,                    "g_debugBullets",                    "0",                          CVAR_CHEAT,                                      0, qfalse, qfalse },
+	{ &g_debugBullets,                    "g_debugBullets",                    "0",                          0,                                               0, qfalse, qfalse },
 	{ &g_motd,                            "g_motd",                            "",                           CVAR_ARCHIVE,                                    0, qfalse, qfalse },
 
 	{ &voteFlags,                         "voteFlags",                         "0",                          CVAR_TEMP | CVAR_ROM | CVAR_SERVERINFO,          0, qfalse, qfalse },
@@ -634,6 +640,7 @@ cvarTable_t gameCvarTable[] =
 	// Debug
 	{ &g_debugHitboxes,                   "g_debugHitboxes",                   "0",                          CVAR_CHEAT,                                      0, qfalse, qfalse },
 	{ &g_debugPlayerHitboxes,             "g_debugPlayerHitboxes",             "0",                          0,                                               0, qfalse, qfalse },     // no need to make this CVAR_CHEAT
+	{ &g_debugForSingleClient,            "g_debugForSingleClient",            "-1",                         0,                                               0, qfalse, qfalse },     // no need to make this CVAR_CHEAT
 
 	{ &g_corpses,                         "g_corpses",                         "0",                          CVAR_LATCH | CVAR_ARCHIVE,                       0, qfalse, qfalse },
 	{ &g_realHead,                        "g_realHead",                        "1",                          0,                                               0, qfalse, qfalse },
@@ -651,6 +658,8 @@ cvarTable_t gameCvarTable[] =
 #endif
 	{ &g_stickyCharge,                    "g_stickyCharge",                    "0",                          CVAR_ARCHIVE,                                    0, qfalse, qfalse },
 	{ &g_xpSaver,                         "g_xpSaver",                         "0",                          CVAR_ARCHIVE,                                    0, qfalse, qfalse },
+	{ &g_dynamiteChaining,                "g_dynamiteChaining",                "0",                          CVAR_ARCHIVE,                                    0, qfalse, qfalse },
+	{ &g_playerHitBoxHeight,              "g_playerHitBoxHeight",              "36",                         CVAR_ARCHIVE | CVAR_SERVERINFO,                  0, qfalse, qfalse },
 };
 
 /**
@@ -1082,6 +1091,7 @@ void G_CheckForCursorHints(gentity_t *ent)
 		dist += VectorDistanceSquared(offset, tr->endpos);
 		if (tr->fraction == 1.f)
 		{
+			G_ResetTempTraceRealHitBox();
 			return;
 		}
 		traceEnt = &g_entities[tr->entityNum];
@@ -1595,7 +1605,7 @@ void G_SetSkillLevels(int skill, const char *string)
 		nextLevel = COM_ParseExt(temp, qfalse);
 		if (nextLevel[0])
 		{
-			levels[count] = atoi(nextLevel);
+			levels[count] = Q_atoi(nextLevel);
 			if (levels[count] < 0)
 			{
 				levels[count] = -1;
@@ -1778,13 +1788,9 @@ void G_FindTeams(void)
  */
 void G_ServerCheck(void)
 {
-	static char versionString[64];
-
-	trap_Cvar_VariableStringBuffer("version", versionString, sizeof(versionString));
-
-	if (!strstr(versionString, PRODUCT_LABEL))
+	if (!level.etLegacyServer)
 	{
-		G_Error("Error: %s does not support server version %s\n", MODNAME, versionString);
+		G_Error("Error: %s does not support server version %s\n", MODNAME, FAKE_VERSION);
 	}
 }
 
@@ -1932,7 +1938,7 @@ void G_UpdateCvars(void)
 					char buffer[32];
 
 					trap_Cvar_LatchedVariableStringBuffer("g_gametype", buffer, sizeof(buffer));
-					gametype = atoi(buffer);
+					gametype = Q_atoi(buffer);
 
 					if (gametype == GT_WOLF_CAMPAIGN && gametype != g_gametype.integer)
 					{
@@ -2312,11 +2318,11 @@ void G_InitGame(int levelTime, int randomSeed, int restart, int etLegacyServer, 
 	time_t aclock;
 	char   timeFt[32];
 
-	// server version check
-	G_ServerCheck();
-
 	// mod version check
 	MOD_CHECK_ETLEGACY(etLegacyServer, serverVersion, level.etLegacyServer);
+
+	// server version check
+	G_ServerCheck();
 
 	G_Printf("------- Game Initialization -------\n");
 	G_Printf("gamename: %s\n", MODNAME);
@@ -2573,6 +2579,8 @@ void G_InitGame(int levelTime, int randomSeed, int restart, int etLegacyServer, 
 
 			trap_SendConsoleCommand(EXEC_APPEND, mapConfig);
 		}
+
+		level.mapVotePlayersCount = CG_ParseMapVotePlayersCountConfig();
 	}
 
 	// Clear out spawn target config strings
@@ -2655,6 +2663,7 @@ void G_InitGame(int levelTime, int randomSeed, int restart, int etLegacyServer, 
 			trap_Cvar_Set("g_prestige", "0");
 		}
 #endif
+
 		if (g_xpSaver.integer)
 		{
 			G_Printf("^3WARNING: g_xpSaver changed to 0\n");
@@ -3180,8 +3189,9 @@ void SendScoreboardMessageToAllClients(void)
  * @brief When the intermission starts, this will be called for all players.
  * If a new client connects, this will be called after the spawn function.
  * @param[in,out] ent Client
+ * @param[in] hasVoted keep tracking clients vote if they change team during intermission
  */
-void MoveClientToIntermission(gentity_t *ent)
+void MoveClientToIntermission(gentity_t *ent, qboolean hasVoted)
 {
 	// take out of follow mode if needed
 	if (ent->client->sess.spectatorState == SPECTATOR_FOLLOW)
@@ -3206,21 +3216,29 @@ void MoveClientToIntermission(gentity_t *ent)
 	}
 
 	// initialize vars
-	if (g_gametype.integer == GT_WOLF_MAPVOTE)
+	if (!hasVoted && g_gametype.integer == GT_WOLF_MAPVOTE)
 	{
 		ent->client->sess.mapVotedFor[0] = -1;
 		ent->client->sess.mapVotedFor[1] = -1;
 		ent->client->sess.mapVotedFor[2] = -1;
 	}
 
-	ent->client->ps.eFlags = 0;
-	ent->s.eFlags          = 0;
-	ent->s.eType           = ET_GENERAL;
-	ent->s.modelindex      = 0;
-	ent->s.loopSound       = 0;
-	ent->s.event           = 0;
-	ent->s.events[0]       = ent->s.events[1] = ent->s.events[2] = ent->s.events[3] = 0;
-	ent->r.contents        = 0;
+	if (hasVoted)
+	{
+		ent->client->ps.eFlags |= EF_VOTED;
+	}
+	else
+	{
+		ent->client->ps.eFlags &= ~EF_VOTED;
+	}
+
+	ent->s.eFlags     = 0;
+	ent->s.eType      = ET_GENERAL;
+	ent->s.modelindex = 0;
+	ent->s.loopSound  = 0;
+	ent->s.event      = 0;
+	ent->s.events[0]  = ent->s.events[1] = ent->s.events[2] = ent->s.events[3] = 0;
+	ent->r.contents   = 0;
 }
 
 /**
@@ -3251,7 +3269,7 @@ void FindIntermissionPoint(void)
 
 	trap_GetConfigstring(CS_MULTI_MAPWINNER, cs, sizeof(cs));
 	buf    = Info_ValueForKey(cs, "w");
-	winner = atoi(buf);
+	winner = Q_atoi(buf);
 
 	// Change from scripting value for winner (0==AXIS, 1==ALLIES) to spawnflag value
 	if (winner == 0)
@@ -3395,6 +3413,33 @@ void BeginIntermission(void)
 					bspptrTmp += strlen(bspptrTmp) + 1;
 					continue;
 				}
+
+				// check maps depending of players count
+				if (level.mapVotePlayersCount)
+				{
+					int k;
+					int isValid = qtrue;
+
+					for (k = 0; mapVotePlayersCount[k].map[0]; k++)
+					{
+						if (!Q_stricmp(mapVotePlayersCount[k].map, str))
+						{
+							if ((mapVotePlayersCount[k].min >= 0 && mapVotePlayersCount[k].min > level.numConnectedClients) ||
+							    (mapVotePlayersCount[k].max >= 0 && mapVotePlayersCount[k].max < level.numConnectedClients))
+							{
+								isValid = qfalse;
+							}
+							break;
+						}
+					}
+
+					if (!isValid)
+					{
+						bspptrTmp += strlen(bspptrTmp) + 1;
+						continue;
+					}
+				}
+
 				Q_strncpyz(shuffledNames[j], str, sizeof(shuffledNames[j]));
 				shuffled[j] = qfalse;
 				++j;
@@ -3522,7 +3567,7 @@ void BeginIntermission(void)
 		{
 			continue;
 		}
-		MoveClientToIntermission(client);
+		MoveClientToIntermission(client, qfalse);
 	}
 
 	// send the current scoring to all clients
@@ -3723,9 +3768,16 @@ void G_LogExit(const char *string)
 	gclient_t *cl;
 	char      cs[MAX_STRING_CHARS];
 
-	// do not allow LogExit to be called in non-playing gamestate
+	// do not allow G_LogExit to be called in non-playing gamestate
 	if (g_gamestate.integer != GS_PLAYING)
 	{
+		return;
+	}
+
+	// ensure exit is not triggered twice due to faulty map scripts
+	if (level.intermissionQueued)
+	{
+		G_LogPrintf("Exit: %s (already triggered)\n", string);
 		return;
 	}
 
@@ -3733,7 +3785,7 @@ void G_LogExit(const char *string)
 
 #ifdef FEATURE_RATING
 	// record match ratings
-	if (g_skillRating.integer)
+	if (g_skillRating.integer && g_gametype.integer != GT_WOLF_STOPWATCH && g_gametype.integer != GT_WOLF_LMS)
 	{
 		for (i = 0; i < level.numConnectedClients; i++)
 		{
@@ -3752,7 +3804,7 @@ void G_LogExit(const char *string)
 
 #ifdef FEATURE_PRESTIGE
 	// record prestige
-	if (g_prestige.integer)
+	if (g_prestige.integer && g_gametype.integer != GT_WOLF_CAMPAIGN && g_gametype.integer != GT_WOLF_STOPWATCH && g_gametype.integer != GT_WOLF_LMS)
 	{
 		for (i = 0; i < level.numConnectedClients; i++)
 		{
@@ -3767,7 +3819,6 @@ void G_LogExit(const char *string)
 			G_SetClientPrestige(ent->client, qtrue);
 		}
 	}
-	else
 #endif
 	if (g_xpSaver.integer && g_gametype.integer == GT_WOLF_CAMPAIGN)
 	{
@@ -3830,10 +3881,10 @@ void G_LogExit(const char *string)
 		int winner, defender;
 
 		trap_GetConfigstring(CS_MULTI_INFO, cs, sizeof(cs));
-		defender = atoi(Info_ValueForKey(cs, "d")); // defender
+		defender = Q_atoi(Info_ValueForKey(cs, "d")); // defender
 
 		trap_GetConfigstring(CS_MULTI_MAPWINNER, cs, sizeof(cs));
-		winner = atoi(Info_ValueForKey(cs, "w"));
+		winner = Q_atoi(Info_ValueForKey(cs, "w"));
 
 		if (!g_currentRound.integer)
 		{
@@ -3863,7 +3914,7 @@ void G_LogExit(const char *string)
 		int winner;
 
 		trap_GetConfigstring(CS_MULTI_MAPWINNER, cs, sizeof(cs));
-		winner = atoi(Info_ValueForKey(cs, "w"));
+		winner = Q_atoi(Info_ValueForKey(cs, "w"));
 
 		if (winner == 0)
 		{
@@ -3892,7 +3943,7 @@ void G_LogExit(const char *string)
 		roundLimit -= 1;    // -1 as it starts at 0
 
 		trap_GetConfigstring(CS_MULTI_MAPWINNER, cs, sizeof(cs));
-		winner = atoi(Info_ValueForKey(cs, "w"));
+		winner = Q_atoi(Info_ValueForKey(cs, "w"));
 
 		if (winner == -1)
 		{
@@ -4133,7 +4184,7 @@ qboolean ScoreIsTied(void)
 	trap_GetConfigstring(CS_MULTI_MAPWINNER, cs, sizeof(cs));
 
 	buf = Info_ValueForKey(cs, "w");
-	a   = atoi(buf);
+	a   = Q_atoi(buf);
 
 	return a == -1;
 }
@@ -4254,8 +4305,8 @@ void CheckExitRules(void)
 				G_Script_ScriptEvent(level.gameManager, "trigger", "timelimit_hit");
 			}
 
-			// do not allow LogExit to be called in non-playing gamestate
-			// - This already happens in LogExit, but we need it for the print command
+			// do not allow G_LogExit to be called in non-playing gamestate
+			// - This already happens in G_LogExit, but we need it for the print command
 			if (g_gamestate.integer != GS_PLAYING)
 			{
 				return;
@@ -5081,7 +5132,7 @@ void G_RunEntity(gentity_t *ent, int msec)
 			// During a pause, gotta keep track of stuff in the air
 			ent->s.pos.trTime += level.time - level.previousTime;
 			// Keep pulsing right for dynmamite
-			if (ent->methodOfDeath == MOD_DYNAMITE)
+			if (ent->methodOfDeath == MOD_DYNAMITE && ent->s.effect1Time)
 			{
 				ent->s.effect1Time += level.time - level.previousTime;
 			}
@@ -5398,7 +5449,7 @@ void G_ReadConfigFileInt(char **cnf, int *v)
 		         t,
 		         COM_GetCurrentParseLine());
 	}
-	*v = atoi(t);
+	*v = Q_atoi(t);
 }
 
 /**

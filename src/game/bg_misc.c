@@ -84,8 +84,8 @@ sysMessage_t HQMessages[SM_NUM_SYS_MSGS] =
 vec3_t playerlegsProneMins = { -13.5f, -13.5f, -24.f };
 vec3_t playerlegsProneMaxs = { 13.5f, 13.5f, -14.4f };
 
-vec3_t playerHeadProneMins = { -18.f, -18.f, -24.f };
-vec3_t playerHeadProneMaxs = { 18.f, 18.f, 0.f };
+vec3_t playerHeadProneMins = { -6.f, -6.f, -24.f };
+vec3_t playerHeadProneMaxs = { 6.f, 6.f, 0.f };
 
 int          numSplinePaths;
 splinePath_t splinePaths[MAX_SPLINE_PATHS];
@@ -206,7 +206,7 @@ weaponTable_t weaponTable[WP_NUM_WEAPONS] =
 	{ WP_K43_SCOPE,            ITEM_WEAPON_K43_SCOPE,             TEAM_AXIS,   SK_MILITARY_INTELLIGENCE_AND_SCOPED_WEAPONS, WP_K43,                 WP_GARAND_SCOPE,         WP_NONE,  WP_K43,               WP_K43,               50,    700,   10.f,       0,           0,           WEAPON_TYPE_RIFLE | WEAPON_TYPE_SCOPED,    WEAPON_FIRING_MODE_SEMI_AUTOMATIC,                           WEAPON_ATTRIBUT_SILENCED | WEAPON_ATTRIBUT_KEEP_DESGUISE,                                                                                                    20,     4,     "",                    WS_K43,             qtrue,  qtrue,  30,     1,   10,     1500,      0,             400,         0,          200,              0,      0,       0,               250,            250,             0,                0,              0,        { 14, 6, -4 },    300,               { 0, 0 },       { 1.f, .5f },  "",                "k43",                   {1, 1, 1, 1, 1},                     MOD_K43_SCOPE,            MOD_K43_SCOPE            },  // WP_K43_SCOPE             // 41    // K43
 	{ WP_FG42_SCOPE,           ITEM_WEAPON_FG42_SCOPE,            TEAM_ALLIES, SK_LIGHT_WEAPONS,                            WP_FG42,                WP_NONE,                 WP_NONE,  WP_FG42,              WP_FG42,              30,    200,   10.f,       0,           0,           WEAPON_TYPE_SMG | WEAPON_TYPE_SCOPED,      WEAPON_FIRING_MODE_AUTOMATIC,                                WEAPON_ATTRIBUT_NONE,                                                                                                                                        55,     55,    "FG 42",               WS_FG42,            qtrue,  qtrue,  60,     1,   20,     2000,      DELAY_LOW,     400,         0,          100,              0,      0,       0,               250,            250,             0,                0,              0,        { 14, 6, -4 },    100,               { .45f, .15f }, { 0, 0 },      "",                "fg42",                  {1, 1, 1, 1, 1},                     MOD_FG42SCOPE,            MOD_FG42SCOPE            },  // WP_FG42_SCOPE            // 42
 	{ WP_MORTAR_SET,           ITEM_WEAPON_MORTAR_SET,            TEAM_ALLIES, SK_HEAVY_WEAPONS,                            WP_MORTAR,              WP_MORTAR2_SET,          WP_NONE,  WP_MORTAR,            WP_MORTAR,            250,   0,     0,          400,         400,         WEAPON_TYPE_MORTAR | WEAPON_TYPE_SET,      WEAPON_FIRING_MODE_MANUAL,                                   WEAPON_ATTRIBUT_CHARGE_TIME | WEAPON_ATTRIBUT_SHAKE,                                                                                                         0,      0,     "MORTAR",              WS_MORTAR,          qtrue,  qfalse, 16,     1,   1,      0,         DELAY_HW,      1400,        0,          0,                0,      0,       0,               250,            250,             0,                0,              0,        { 14, 6, -4 },    0,                 { 0, 0 },       { 0, 0 },      "mortar_grenade",  "mortar_set",            {.5f, .33f, .33f, .33f, .33f},       MOD_MORTAR,               MOD_MORTAR               },  // WP_MORTAR_SET            // 43
-	{ WP_MEDIC_ADRENALINE,     ITEM_WEAPON_MEDIC_ADRENALINE,      TEAM_FREE,   SK_FIRST_AID,                                WP_NONE,                WP_NONE,                 WP_NONE,  WP_MEDIC_SYRINGE,     WP_MEDIC_SYRINGE,     1,     0,     0,          0,           0,           WEAPON_TYPE_SYRINGUE,                      WEAPON_FIRING_MODE_MANUAL | WEAPON_FIRING_MODE_ONE_SHOT,     WEAPON_ATTRIBUT_FIRE_UNDERWATER | WEAPON_ATTRIBUT_CHARGE_TIME | WEAPON_ATTRIBUT_KEEP_DESGUISE,                                                               0,      0,     "ADRENALINE",          WS_MAX,             qtrue,  qfalse, 10,     1,   1,      1500,      50,            1000,        0,          0,                0,      0,       0,               250,            250,             0,                0,              0,        { 14, 6, -4 },    0,                 { 0, 0 },       { 0, 0 },      "",                "adrenaline",            {1, 1, 1, 1, 1},                     MOD_SYRINGE,              MOD_SYRINGE              },  // WP_MEDIC_ADRENALINE      // 44
+	{ WP_MEDIC_ADRENALINE,     ITEM_WEAPON_MEDIC_ADRENALINE,      TEAM_FREE,   SK_FIRST_AID,                                WP_NONE,                WP_NONE,                 WP_NONE,  WP_MEDIC_SYRINGE,     WP_MEDIC_SYRINGE,     1,     0,     0,          0,           0,           WEAPON_TYPE_SYRINGUE,                      WEAPON_FIRING_MODE_MANUAL | WEAPON_FIRING_MODE_ONE_SHOT,     WEAPON_ATTRIBUT_FIRE_UNDERWATER | WEAPON_ATTRIBUT_CHARGE_TIME | WEAPON_ATTRIBUT_KEEP_DESGUISE,                                                               0,      0,     "ADRENALINE",          WS_MAX,             qtrue,  qfalse, 10,     1,   1,      0,         50,            1000,        0,          0,                0,      0,       0,               250,            250,             0,                0,              0,        { 14, 6, -4 },    0,                 { 0, 0 },       { 0, 0 },      "",                "adrenaline",            {1, 1, 1, 1, 1},                     MOD_SYRINGE,              MOD_SYRINGE              },  // WP_MEDIC_ADRENALINE      // 44
 	{ WP_AKIMBO_SILENCEDCOLT,  ITEM_WEAPON_AKIMBO_SILENCED_COLT,  TEAM_ALLIES, SK_LIGHT_WEAPONS,                            WP_NONE,                WP_AKIMBO_SILENCEDLUGER, WP_COLT,  WP_COLT,              WP_AKIMBO_COLT,       18,    600,   0.4f,       0,           0,           WEAPON_TYPE_PISTOL,                        WEAPON_FIRING_MODE_SEMI_AUTOMATIC,                           WEAPON_ATTRIBUT_AKIMBO | WEAPON_ATTRIBUT_SILENCED | WEAPON_ATTRIBUT_KEEP_DESGUISE | WEAPON_ATTRIBUT_FALL_OFF,                                                0,      0,     "SLNCD AKIMBO COLTS",  WS_COLT,            qtrue,  qtrue,  48,     1,   8,      2700,      DELAY_PISTOL,  200,         0,          20,               0,      0,       0,               250,            250,             0,                0,              0,        { 14, -6, -4 },   100,               { .45f, .15f }, { 0, 0 },      "",                "akimbo_silenced_colt",  {1, 1, 1, 1, 1},                     MOD_AKIMBO_SILENCEDCOLT,  MOD_AKIMBO_SILENCEDCOLT  },  // WP_AKIMBO_SILENCEDCOLT   // 45
 	{ WP_AKIMBO_SILENCEDLUGER, ITEM_WEAPON_AKIMBO_SILENCED_LUGER, TEAM_AXIS,   SK_LIGHT_WEAPONS,                            WP_NONE,                WP_AKIMBO_SILENCEDCOLT,  WP_LUGER, WP_LUGER,             WP_AKIMBO_LUGER,      18,    600,   0.4f,       0,           0,           WEAPON_TYPE_PISTOL,                        WEAPON_FIRING_MODE_SEMI_AUTOMATIC,                           WEAPON_ATTRIBUT_AKIMBO | WEAPON_ATTRIBUT_SILENCED | WEAPON_ATTRIBUT_KEEP_DESGUISE | WEAPON_ATTRIBUT_FALL_OFF,                                                0,      0,     "SLNCD AKIMBO LUGERS", WS_LUGER,           qtrue,  qtrue,  48,     1,   8,      2700,      DELAY_PISTOL,  200,         0,          20,               0,      0,       0,               250,            250,             0,                0,              0,        { 14, -6, -4 },   100,               { .45f, .15f }, { 0, 0 },      "",                "akimbo_silenced_luger", {1, 1, 1, 1, 1},                     MOD_AKIMBO_SILENCEDLUGER, MOD_AKIMBO_SILENCEDLUGER },  // WP_AKIMBO_SILENCEDLUGER  // 46
 	{ WP_MOBILE_MG42_SET,      ITEM_WEAPON_MOBILE_MG42_SET,       TEAM_AXIS,   SK_HEAVY_WEAPONS,                            WP_MOBILE_MG42,         WP_MOBILE_BROWNING_SET,  WP_NONE,  WP_MOBILE_MG42,       WP_MOBILE_MG42,       18,    2500,  0.9f,       0,           0,           WEAPON_TYPE_MG | WEAPON_TYPE_SET,          WEAPON_FIRING_MODE_AUTOMATIC,                                WEAPON_ATTRIBUT_NONE,                                                                                                                                        55,     55,    "MOBILE MG 42",        WS_MG42,            qtrue,  qtrue,  450,    1,   150,    3000,      DELAY_LOW,     66,          0,          20,               1500,   300,     2000,            250,            250,             0,                0,              0,        { 14, 6, -4 },    0,                 { 0, 0 },       { 0, 0 },      "",                "mg42",                  {1, 1, 1, 1, 1},                     MOD_MOBILE_MG42,          MOD_MOBILE_MG42          },  // WP_MOBILE_MG42_SET       // 47
@@ -3523,12 +3523,12 @@ const char *eventnames[EV_MAX_EVENTS] =
 	"unused event",              // EV_DEATH3,
 	"EV_OBITUARY",
 	"EV_STOPSTREAMINGSOUND",
-	"EV_POWERUP_QUAD",
-	"EV_POWERUP_BATTLESUIT",
-	"EV_POWERUP_REGEN",
+	"unused event",              // EV_POWERUP_QUAD
+	"unused event",              // EV_POWERUP_BATTLESUIT
+	"unused event",              // EV_POWERUP_REGEN
 	"EV_GIB_PLAYER",
 	"unused event",              // EV_DEBUG_LINE,
-	"EV_STOPLOOPINGSOUND",
+	"unused event",              // EV_STOPLOOPINGSOUND
 	"unused event",              // EV_TAUNT,
 	"EV_SMOKE",
 	"EV_SPARKS",
@@ -3585,6 +3585,7 @@ const char *eventnames[EV_MAX_EVENTS] =
 	"EV_BODY_DP",
 	"EV_FLAG_INDICATOR",
 	"EV_MISSILE_FALLING",
+	"EV_PLAYER_HIT"
 	//"EV_MAX_EVENTS",
 };
 
@@ -4922,11 +4923,11 @@ void BG_HeadCollisionBoxOffset(vec3_t viewangles, int eFlags, vec3_t headOffset)
 
 	if (eFlags & EF_DEAD)
 	{
-		VectorScale(flatforward, -36, headOffset);
+		VectorScale(flatforward, -24, headOffset);
 	}
 	else            // EF_PRONE
 	{
-		VectorScale(flatforward, 36, headOffset);
+		VectorScale(flatforward, 24, headOffset);
 	}
 }
 

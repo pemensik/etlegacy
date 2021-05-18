@@ -11,9 +11,15 @@ _SRC=`pwd`
 BUILDDIR="${BUILD_DIR:-${_SRC}/build}"
 SOURCEDIR="${_SRC}/src"
 PROJECTDIR="${_SRC}/project"
-MODMAIN="${HOME}/.etlegacy/etmain"
+
+if [[ `uname -s` == "Darwin" ]]; then
+	MODMAIN="${HOME}/Library/Application Support/etlegacy/etmain"
+else
+	MODMAIN="${HOME}/.etlegacy/etmain"
+fi
+
 ETLEGACY_MIRROR="https://mirror.etlegacy.com/etmain/"
-ETLEGACY_VERSION=`git describe 2>/dev/null`
+ETLEGACY_VERSION=`git describe --abbrev=7 2>/dev/null`
 INSTALL_PREFIX=${HOME}/etlegacy
 
 # Set this to false to disable colors
@@ -21,6 +27,7 @@ color=true
 
 # Do 32bit build
 x86_build=true
+
 
 # Command that can be run
 # first array has the cmd names which can be given
@@ -42,30 +49,30 @@ check_exit() {
 }
 
 if $color; then
-    # For color codes, see e.g. http://www.cplusplus.com/forum/unices/36461/
-    boldgreen='\033[1;32m'
-    boldlightblue='\033[1;36m'
-    boldwhite='\033[1;37m'
-    boldyellow='\033[1;33m'
-    boldred='\033[1;31m'
-    darkgreen='\033[0;32m'
-    reset='\033[0m'
+	# For color codes, see e.g. http://www.cplusplus.com/forum/unices/36461/
+	boldgreen='\033[1;32m'
+	boldlightblue='\033[1;36m'
+	boldwhite='\033[1;37m'
+	boldyellow='\033[1;33m'
+	boldred='\033[1;31m'
+	darkgreen='\033[0;32m'
+	reset='\033[0m'
 else
-    boldgreen=
-    boldlightblue=
-    boldwhite=
-    boldyellow=
-    boldred=
-    darkgreen=
-    reset=
+	boldgreen=
+	boldlightblue=
+	boldwhite=
+	boldyellow=
+	boldred=
+	darkgreen=
+	reset=
 fi
 
 einfo() {
-    echo -e "\n$boldgreen~~>$reset $boldwhite${1}$reset"
+	echo -e "\n$boldgreen~~>$reset $boldwhite${1}$reset"
 }
 
 ehead() {
-    echo -e "$boldlightblue * $boldwhite${1}$reset"
+	echo -e "$boldlightblue * $boldwhite${1}$reset"
 }
 
 app_exists() {
@@ -138,8 +145,8 @@ detectos() {
 
 		# Check if x86_build is set and an osx vesion as of Catalina or higher is used
 		IFS='.' read -r -a ver <<< "$DISTRO"
-		if [ "${ver[1]}" -gt 14 ] && [ "${x86_build}" = true ]; then
-			einfo "You can't compile 32bit binaries with Mac OS 10.${ver[1]}. Use the flag \"-64\". Aborting."
+		if ([ "${ver[0]}" -gt 10 ] || [ "${ver[1]}" -gt 13 ]) && [ "${x86_build}" = true ]; then
+			einfo "You can't compile 32bit binaries with Mac OS ${ver[0]}.${ver[1]}. Use the flag \"-64\". Aborting."
 			exit 1
 		fi
 	else
@@ -212,6 +219,14 @@ print_startup() {
 	echo "  CXX = ${CXX}"
 }
 
+setup_sensible_defaults() {
+	# Default to 64 bit builds on OSX
+	if [[ `uname -s` == "Darwin" ]]; then
+		CROSS_COMPILE32=0
+		x86_build=false
+	fi
+}
+
 parse_commandline() {
 	for var in "$@"
 	do
@@ -224,10 +239,21 @@ parse_commandline() {
 		elif [[ $var == --osx=* ]]; then
 			MACOSX_DEPLOYMENT_TARGET=$(echo $var| cut -d'=' -f 2)
 			einfo "Will use OSX target version: ${MACOSX_DEPLOYMENT_TARGET}"
+		elif [[ $var == --sysroot=* ]]; then
+			XCODE_SDK_PATH=$(echo $var| cut -d'=' -f 2)
+			einfo "Will use OSX sysroot: ${XCODE_SDK_PATH}"
 		elif [ "$var" = "-64" ]; then
 			einfo "Will disable crosscompile"
 			CROSS_COMPILE32=0
 			x86_build=false
+		elif [ "$var" = "-32" ]; then
+			einfo "Will enable crosscompile"
+			CROSS_COMPILE32=1
+			x86_build=true
+		elif [ "$var" = "-no-ssl" ]; then
+			einfo "Will disable SSL"
+			FEATURE_SSL=0
+			BUNDLED_OPENSSL=0
 		elif [ "$var" = "-zip" ]; then
 			ZIP_ONLY=1
 		elif [ "$var" = "-clang" ]; then
@@ -375,6 +401,9 @@ parse_commandline() {
 }
 
 generate_configuration() {
+	# Generator wich to use with CMake on the generate step
+	MAKEFILE_GENERATOR=${MAKEFILE_GENERATOR:-Unix Makefiles}
+
 	#cmake variables
 	RELEASE_TYPE=${RELEASE_TYPE:-Release}
 	CROSS_COMPILE32=${CROSS_COMPILE32:-1}
@@ -398,9 +427,9 @@ generate_configuration() {
 	BUNDLED_PNG=${BUNDLED_PNG:-1}
 	BUNDLED_SQLITE3=${BUNDLED_SQLITE3:-1}
 
-	if [ "${PLATFORMSYS}" != "Mac OS X" ]; then
+	if [ "${PLATFORMSYS}" != "Mac OS X" ] && [ "${PLATFORMSYS}" != "macOS" ]; then
 		BUNDLED_CURL=${BUNDLED_CURL:-1}
-		BUNDLED_OPENSSL=${BUNDLED_OPENSSL:-0}
+		BUNDLED_OPENSSL=${BUNDLED_OPENSSL:-1}
 		BUNDLED_OPENAL=${BUNDLED_OPENAL:-1}
 	else
 		BUNDLED_CURL=${BUNDLED_CURL:-0}
@@ -414,7 +443,7 @@ generate_configuration() {
 	RENDERER_DYNAMIC=${RENDERER_DYNAMIC:-1}
 
 	FEATURE_CURL=${FEATURE_CURL:-1}
-	FEATURE_OPENSSL=${FEATURE_OPENSSL:-0}
+	FEATURE_SSL=${FEATURE_SSL:-1}
 	FEATURE_OGG_VORBIS=${FEATURE_OGG_VORBIS:-1}
 	FEATURE_THEORA=${FEATURE_THEORA:-1}
 	FEATURE_OPENAL=${FEATURE_OPENAL:-1}
@@ -434,7 +463,7 @@ generate_configuration() {
 	INSTALL_GEOIP=${INSTALL_GEOIP:-1}
 	INSTALL_WOLFADMIN=${INSTALL_WOLFADMIN:-1}
 
-	if [ "${PLATFORMSYS}" != "Mac OS X" ]; then
+	if [ "${PLATFORMSYS}" != "Mac OS X" ] && [ "${PLATFORMSYS}" != "macOS" ]; then
 		FEATURE_OMNIBOT=${FEATURE_OMNIBOT:-1}
 		INSTALL_OMNIBOT=${INSTALL_OMNIBOT:-1}
 	else
@@ -459,6 +488,7 @@ generate_configuration() {
 		-DBUNDLED_MINIZIP=${BUNDLED_MINIZIP}
 		-DBUNDLED_JPEG=${BUNDLED_JPEG}
 		-DBUNDLED_CURL=${BUNDLED_CURL}
+		-DBUNDLED_WOLFSSL=${BUNDLED_WOLFSSL}
 		-DBUNDLED_OPENSSL=${BUNDLED_OPENSSL}
 		-DBUNDLED_LUA=${BUNDLED_LUA}
 		-DBUNDLED_OGG_VORBIS=${BUNDLED_OGG_VORBIS}
@@ -469,7 +499,7 @@ generate_configuration() {
 		-DBUNDLED_PNG=${BUNDLED_PNG}
 		-DBUNDLED_SQLITE3=${BUNDLED_SQLITE3}
 		-DFEATURE_CURL=${FEATURE_CURL}
-		-DFEATURE_OPENSSL=${FEATURE_OPENSSL}
+		-DFEATURE_SSL=${FEATURE_SSL}
 		-DFEATURE_OGG_VORBIS=${FEATURE_OGG_VORBIS}
 		-DFEATURE_THEORA=${FEATURE_THEORA}
 		-DFEATURE_OPENAL=${FEATURE_OPENAL}
@@ -496,9 +526,10 @@ generate_configuration() {
 	"
 
 	if [ "${DEV}" != 1 ]; then
-	if [ "${PLATFORMSYS}" == "Mac OS X" ]; then
+	if [ "${PLATFORMSYS}" == "Mac OS X" ] || [ "${PLATFORMSYS}" == "macOS" ]; then
 		PREFIX=${INSTALL_PREFIX}
 		_CFGSTRING="${_CFGSTRING}
+		-DXCODE_SDK_PATH=${XCODE_SDK_PATH}
 		-DCMAKE_INSTALL_PREFIX=${PREFIX}
 		-DCMAKE_OSX_DEPLOYMENT_TARGET=${CMAKE_OSX_DEPLOYMENT_TARGET}
 		-DINSTALL_DEFAULT_MODDIR=./
@@ -583,22 +614,86 @@ run_clean() {
 	fi
 }
 
-run_build() {
-	einfo "Build..."
+run_generate() {
+	einfo "Generating makefiles: ${MAKEFILE_GENERATOR}..."
 	mkdir -p ${BUILDDIR}
 	cd ${BUILDDIR}
-	cmake ${_CFGSTRING} ..
-	check_exit
-	make ${CMD_ARGS}
+	cmake -G "${MAKEFILE_GENERATOR}" ${_CFGSTRING} ..
 	check_exit
 }
 
-run_generate() {
-	einfo "Generating makefiles..."
-	mkdir -p ${BUILDDIR}
-	cd ${BUILDDIR}
-	cmake ${_CFGSTRING} ..
+run_build() {
+	run_generate
+	einfo "Build..."
+	make ${CMD_ARGS}
+	cmake --build . --config $RELEASE_TYPE
 	check_exit
+}
+
+set_osx_folder_icon_python() {
+	# Needs to be the osx:s default python install!
+	/usr/bin/python << END
+import Cocoa
+import sys
+import os
+import glob
+import shutil
+iconfile = "icon.png"
+foldername = "ETLegacy"
+if os.path.isdir(foldername):
+	shutil.rmtree(foldername)
+files = [f for f in glob.glob('./_CPack_Packages/Darwin/TGZ/etlegacy*') if os.path.isdir(f)]
+if len(files) == 1 :
+	packfolder = files[0]
+	shutil.copytree(packfolder, foldername)
+	print 'Copied the mod install folder'
+	Cocoa.NSWorkspace.sharedWorkspace().setIcon_forFile_options_(Cocoa.NSImage.alloc().initWithContentsOfFile_(iconfile), foldername, 0) or sys.exit("Unable to set file icon")
+	print 'The icon succesfully set'
+END
+}
+
+set_osx_folder_icon_tooled() {
+	# Use MacOS developer tools
+	# Set the image as its own icon
+	sips -i icon.png
+	# Export the icon data
+	DeRez -only icns icon.png > tmpicons.rscs
+	# make sure we are staring with a clean slate
+	rm -Rf ./ETLegacy
+	# Copy the CPack generate folder here
+	cp -R ./_CPack_Packages/Darwin/TGZ/etlegacy*/ ./ETLegacy
+	# Append the image data into a special icon file inside the folder
+	Rez -append tmpicons.rscs -o $'ETLegacy/Icon\r'
+	# Set the icon for the folder
+	SetFile -a C ETLegacy
+	# Hide the icon file
+	SetFile -a V $'ETLegacy/Icon\r'
+}
+
+create_ready_osx_dmg() {
+	# Create the DMG json
+	cat << END > etlegacy-dmg.json
+{
+	"title": "ET Legacy $SHORT_VERSION",
+	"icon": "../misc/etl.icns",
+	"background": "osx-dmg-background.jpg",
+	"window": {
+	  "size": {
+		  "width": 640,
+		  "height": 390
+	  }
+	},
+	"contents": [
+		{ "x": 456, "y": 250, "type": "link", "path": "/Applications" },
+		{ "x": 192, "y": 250, "type": "file", "path": "ETLegacy" }
+	]
+}
+END
+
+	# using appdmg nodejs application to generate the actual DMG installer
+	# https://github.com/LinusU/node-appdmg
+	# npx --yes -p "appdmg@0.6.0" -c "appdmg etlegacy-dmg.json 'etlegacy-${ETLEGACY_VERSION}.dmg'"
+	npx appdmg etlegacy-dmg.json "etlegacy-${ETLEGACY_VERSION}.dmg"
 }
 
 create_osx_dmg() {
@@ -615,9 +710,9 @@ create_osx_dmg() {
 		return
 	fi
 
-	app_exists APP_FOUND "appdmg"
+	app_exists APP_FOUND "npx"
 	if [ $APP_FOUND == 0 ]; then
-		echo "Missing appdmg skipping OSX installer creation"
+		echo "Missing npx skipping OSX installer creation"
 		return
 	fi
 
@@ -640,49 +735,8 @@ create_osx_dmg() {
 	# brew install graphicsmagick
 	gm convert ../misc/osx-dmg-background.jpg -resize 640x360 -font ../misc/din1451alt.ttf -pointsize 20 -fill 'rgb(85,85,85)'  -draw "text 75,352 '${SHORT_VERSION}'" osx-dmg-background.jpg
 
-	# Needs to be the osx:s default python install!
-	python << END
-import Cocoa
-import sys
-import os
-import glob
-import shutil
-iconfile = "icon.png"
-foldername = "ETLegacy"
-if os.path.isdir(foldername):
-	shutil.rmtree(foldername)
-files = [f for f in glob.glob('./_CPack_Packages/Darwin/TGZ/etlegacy*') if os.path.isdir(f)]
-if len(files) == 1 :
-	packfolder = files[0]
-	shutil.copytree(packfolder, foldername)
-	print 'Copied the mod install folder'
-	Cocoa.NSWorkspace.sharedWorkspace().setIcon_forFile_options_(Cocoa.NSImage.alloc().initWithContentsOfFile_(iconfile), foldername, 0) or sys.exit("Unable to set file icon")
-	print 'The icon succesfully set'
-END
-
-	# Create the DMG json
-	cat << END > etlegacy-dmg.json
-{
-	"title": "ET Legacy $SHORT_VERSION",
-	"icon": "../misc/etl.icns",
-  "background": "osx-dmg-background.jpg",
-  "window": {
-  	"size": {
-  		"width": 640,
-  		"height": 390
-  	}
-  },
-  "contents": [
-    { "x": 456, "y": 250, "type": "link", "path": "/Applications" },
-    { "x": 192, "y": 250, "type": "file", "path": "ETLegacy" }
-  ]
-}
-END
-
-	# using appdmg nodejs application to generate the actual DMG installer
-	# https://github.com/LinusU/node-appdmg
-	# npm install -g appdmg
-	appdmg etlegacy-dmg.json "ETLegacy-${ETLEGACY_VERSION}.dmg"
+	set_osx_folder_icon_tooled
+	create_ready_osx_dmg
 }
 
 run_package() {
@@ -692,7 +746,7 @@ run_package() {
 	# calling cpack directly we are not checking the build output anymore
 	check_exit "cpack"
 	# TODO: detect if osx and generate a package and a dmg installer
-	if [ "${PLATFORMSYS}" == "Mac OS X" ]; then
+	if [ "${PLATFORMSYS}" == "Mac OS X" ] || [ "${PLATFORMSYS}" == "macOS" ]; then
 		create_osx_dmg
 	fi
 }
@@ -736,7 +790,7 @@ run_project() {
 	fi
 	mkdir -p ${PROJECTDIR}
 	cd ${PROJECTDIR}
-	if [ "${PLATFORMSYS}" == "Mac OS X" ]; then
+	if [ "${PLATFORMSYS}" == "Mac OS X" ] || [ "${PLATFORMSYS}" == "macOS" ]; then
 		cmake -G 'Xcode' ${_CFGSTRING} ..
 	else
 		cmake ${_CFGSTRING} ..
@@ -773,12 +827,14 @@ print_help() {
 	ehead "help - print this help"
 	echo
 	einfo "Properties"
-	ehead "-64, -debug, -clang, -nodb -nor2, -nodynamic, -systemlib, -noextra, -noupdate, -mod, -server"
+	ehead "-64, -32, -debug, -clang, -nodb -nor2, -nodynamic, -systemlib, -noextra, -noupdate, -mod, -server"
 	ehead "--build=*, --prefix=*, --osx=*"
 	echo
 }
 
 start_script() {
+	setup_sensible_defaults
+
 	parse_commandline $@
 
 	#CMD_ARGS="${@:2}"

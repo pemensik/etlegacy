@@ -49,7 +49,7 @@
 	itemDef {                                                                                                   \
 		name        "window"                                                                                    \
 		group GROUP_NAME                                                                                  \
-		rect        0 0 WINDOW_WIDTH WINDOW_HEIGHT                                                              \
+		rect        0 0 $evalint(WINDOW_WIDTH) $evalint(WINDOW_HEIGHT)                                          \
 		style WINDOW_STYLE_FILLED                                                                         \
 		backcolor   0 0 0 .2                                                                                    \
 		border WINDOW_BORDER_FULL                                                                          \
@@ -61,7 +61,7 @@
 	itemDef {                                                                                                   \
 		name        "titlebar"                                                                                  \
 		group GROUP_NAME                                                                                  \
-		rect        2 2 GRADIENT_START_OFFSET 24                                                                \
+		rect        2 2 $evalint(GRADIENT_START_OFFSET) 24                                                      \
 		style WINDOW_STYLE_FILLED                                                                         \
 		backcolor   .16 .2 .17 .8                                                                               \
 		visible     1                                                                                           \
@@ -98,7 +98,7 @@
 	itemDef {                                                                                                   \
 		name        "window"                                                                                    \
 		group GROUP_NAME                                                                                  \
-		rect        0 0 WINDOW_WIDTH WINDOW_HEIGHT                                                              \
+		rect        0 0 $evalint(WINDOW_WIDTH) $evalint(WINDOW_HEIGHT)                                          \
 		style WINDOW_STYLE_FILLED                                                                         \
 		backcolor   0 0 0 .9                                                                                    \
 		border WINDOW_BORDER_FULL                                                                          \

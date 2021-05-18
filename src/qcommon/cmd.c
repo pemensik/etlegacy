@@ -35,6 +35,7 @@
 
 #include "q_shared.h"
 #include "qcommon.h"
+#include "q_unicode.h"
 
 #ifndef DEDICATED
 #include "../client/client.h"
@@ -67,7 +68,7 @@ void Cmd_Wait_f(void)
 {
 	if (Cmd_Argc() == 2)
 	{
-		cmd_wait = atoi(Cmd_Argv(1));
+		cmd_wait = Q_atoi(Cmd_Argv(1));
 		if (cmd_wait < 0)
 		{
 			cmd_wait = 1; // ignore the argument
@@ -578,8 +579,8 @@ void Cmd_Args_Sanitize(void)
 /**
  * @brief Parses the given string into command line tokens.
  *
- * @details The text is copied to a seperate buffer and 0 characters
- * are inserted in the apropriate place, The argv array
+ * @details The text is copied to a separate buffer and 0 characters
+ * are inserted in the appropriate place, The argv array
  * will point into this temporary buffer.
  *
  * @param[in] text_in
@@ -676,14 +677,22 @@ static void Cmd_TokenizeString2(const char *text_in, qboolean ignoreQuotes)
 		cmd_argc++;
 
 		// skip until whitespace, quote, or command
-		while (*text > ' ')
+		while (qtrue)
 		{
-			if (!ignoreQuotes && text[0] == '"')
+			uint32_t point1 = Q_UTF8_CodePoint(text);
+			int width = Q_UTF8_Width(text);
+
+			if(point1 <= ' ')
 			{
 				break;
 			}
 
-			if (text[0] == '/' && text[1] == '/')
+			if (!ignoreQuotes && point1 == '"')
+			{
+				break;
+			}
+
+			if (point1 == '/' && text[1] == '/')
 			{
 				// lets us put 'http://' in commandlines
 				if (text == text_in || (text > text_in && text[-1] != ':'))
@@ -693,12 +702,16 @@ static void Cmd_TokenizeString2(const char *text_in, qboolean ignoreQuotes)
 			}
 
 			// skip /* */ comments
-			if (text[0] == '/' && text[1] == '*')
+			if (point1 == '/' && text[1] == '*')
 			{
 				break;
 			}
 
-			*textOut++ = *text++;
+			while (width)
+			{
+				*textOut++ = *text++;
+				width--;
+			}
 		}
 
 		*textOut++ = 0;

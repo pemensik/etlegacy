@@ -232,7 +232,7 @@ void Cvar_CommandCompletion(void (*callback)(const char *s))
 
 	for (cvar = cvar_vars ; cvar ; cvar = cvar->next)
 	{
-		if (cvar->name)
+		if (cvar->name && (cvar->flags & CVAR_NOTABCOMPLETE) == 0)
 		{
 			callback(cvar->name);
 		}
@@ -568,8 +568,8 @@ cvar_t *Cvar_Get(const char *varName, const char *value, int flags)
 	var->string            = CopyString(value);
 	var->modified          = qtrue;
 	var->modificationCount = 1;
-	var->value             = (float)(atof(var->string));
-	var->integer           = atoi(var->string);
+	var->value             = Q_atof(var->string);
+	var->integer           = Q_atoi(var->string);
 	var->resetString       = CopyString(value);
 	var->validate          = qfalse;
 	var->description       = NULL;
@@ -782,8 +782,8 @@ cvar_t *Cvar_Set2(const char *var_name, const char *value, qboolean force)
 	Z_Free(var->string);     // free the old value string
 
 	var->string  = CopyString(value);
-	var->value   = (float)(atof(var->string));
-	var->integer = atoi(var->string);
+	var->value   = Q_atof(var->string);
+	var->integer = Q_atoi(var->string);
 
 	return var;
 }
@@ -842,7 +842,7 @@ void Cvar_SetValue(const char *var_name, float value)
 {
 	char val[32];
 
-	if (value == (int)value)
+	if (Q_isintegral(value))
 	{
 		Com_sprintf(val, sizeof(val), "%i", (int)value);
 	}
@@ -910,7 +910,7 @@ void Cvar_SetCheatState(void)
 				Z_Free(var->latchedString);
 				var->latchedString = NULL;
 			}
-			if (strcmp(var->resetString, var->string))
+			if (strcmp(var->resetString, var->string) != 0)
 			{
 				Cvar_Set(var->name, var->resetString);
 			}
@@ -1068,12 +1068,12 @@ void Cvar_Cycle_f(void)
 	}
 
 	oldvalue = value = (int)(Cvar_VariableValue(Cmd_Argv(1)));
-	start    = atoi(Cmd_Argv(2));
-	end      = atoi(Cmd_Argv(3));
+	start    = Q_atoi(Cmd_Argv(2));
+	end      = Q_atoi(Cmd_Argv(3));
 
 	if (Cmd_Argc() == 5)
 	{
-		step = abs(atoi(Cmd_Argv(4)));
+		step = abs(Q_atoi(Cmd_Argv(4)));
 	}
 	else
 	{

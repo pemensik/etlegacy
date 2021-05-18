@@ -175,10 +175,10 @@ typedef struct
 typedef struct
 {
 	/// print message on the local console
-	void(QDECL * Printf)(int printLevel, const char *fmt, ...) __attribute__ ((format(printf, 2, 3)));
+	void(QDECL * Printf)(int printLevel, const char *fmt, ...) _attribute ((format(printf, 2, 3)));
 
 	/// abort the game
-	void(QDECL * Error)(int errorLevel, const char *fmt, ...) __attribute__ ((noreturn, format(printf, 2, 3)));
+	void(QDECL * Error)(int errorLevel, const char *fmt, ...) _attribute ((noreturn, format(printf, 2, 3)));
 
 	/// milliseconds should only be used for profiling, never
 	/// for anything game related. Get time from the refdef
@@ -189,9 +189,9 @@ typedef struct
 	/// won't be freed
 	void (*Hunk_Clear)(void);
 #ifdef HUNK_DEBUG
-	void * (*Hunk_AllocDebug)(unsigned int size, ha_pref pref, char *label, char *file, int line);
+	void * (*Hunk_AllocDebug)(size_t size, ha_pref pref, char *label, char *file, int line);
 #else
-	void * (*Hunk_Alloc)(unsigned int size, ha_pref pref);
+	void * (*Hunk_Alloc)(size_t size, ha_pref pref);
 #endif
 	void * (*Hunk_AllocateTempMemory)(size_t size);
 	void (*Hunk_FreeTempMemory)(void *block);

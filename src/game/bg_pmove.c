@@ -49,7 +49,7 @@
 #define PM_FIXEDPHYSICSFPS      cgs.fixedphysicsfps
 #define PM_PRONEDELAY           cgs.pronedelay
 
-#elif GAMEDLL
+#else
 extern vmCvar_t g_fixedphysics;
 extern vmCvar_t g_fixedphysicsfps;
 extern vmCvar_t g_pronedelay;
@@ -69,7 +69,7 @@ pml_t   pml;
 // movement parameters
 float pm_stopspeed = 100;
 
-float pm_waterSwimScale = 0.5;
+float pm_waterSwimScale = 0.5f;
 //float pm_waterWadeScale = 0.70f;
 float pm_slagSwimScale = 0.30f;
 //float pm_slagWadeScale  = 0.70f;
@@ -255,13 +255,13 @@ void PM_ClipVelocity(vec3_t in, vec3_t normal, vec3_t out, float overbounce)
  * @param[in] tracemask
  */
 void PM_TraceLegs(trace_t *trace, float *legsOffset, vec3_t start, vec3_t end, trace_t *bodytrace, vec3_t viewangles,
-                  void (tracefunc) (trace_t *results,
-                                    const vec3_t start,
-                                    const vec3_t mins,
-                                    const vec3_t maxs,
-                                    const vec3_t end,
-                                    int passEntityNum,
-                                    int contentMask),
+                  void(tracefunc) (trace_t *results,
+                                   const vec3_t start,
+                                   const vec3_t mins,
+                                   const vec3_t maxs,
+                                   const vec3_t end,
+                                   int passEntityNum,
+                                   int contentMask),
                   int ignoreent,
                   int tracemask)
 {
@@ -277,8 +277,8 @@ void PM_TraceLegs(trace_t *trace, float *legsOffset, vec3_t start, vec3_t end, t
 
 	// legs position
 	BG_LegsCollisionBoxOffset(viewangles, pm->ps->eFlags, ofs);
-	//VectorAdd(start, ofs, org);
-	VectorCopy(start, org);
+	VectorAdd(start, ofs, org);
+	//VectorCopy(start, org);
 	VectorAdd(end, ofs, point);
 
 	tracefunc(trace, org, playerlegsProneMins, playerlegsProneMaxs, point, ignoreent, tracemask);
@@ -319,6 +319,8 @@ void PM_TraceLegs(trace_t *trace, float *legsOffset, vec3_t start, vec3_t end, t
 				}
 			}
 		}
+
+
 	}
 }
 
@@ -333,13 +335,13 @@ void PM_TraceLegs(trace_t *trace, float *legsOffset, vec3_t start, vec3_t end, t
  * @param[in] tracemask
  */
 void PM_TraceHead(trace_t *trace, vec3_t start, vec3_t end, trace_t *bodytrace, vec3_t viewangles,
-                  void (tracefunc) (trace_t *results,
-                                    const vec3_t start,
-                                    const vec3_t mins,
-                                    const vec3_t maxs,
-                                    const vec3_t end,
-                                    int passEntityNum,
-                                    int contentMask),
+                  void(tracefunc) (trace_t *results,
+                                   const vec3_t start,
+                                   const vec3_t mins,
+                                   const vec3_t maxs,
+                                   const vec3_t end,
+                                   int passEntityNum,
+                                   int contentMask),
                   int ignoreent,
                   int tracemask)
 {
@@ -350,8 +352,8 @@ void PM_TraceHead(trace_t *trace, vec3_t start, vec3_t end, trace_t *bodytrace, 
 
 	// head position
 	BG_HeadCollisionBoxOffset(viewangles, pm->ps->eFlags, ofs);
-	//VectorAdd(start, ofs, org);
-	VectorCopy(start, org);
+	VectorAdd(start, ofs, org);
+	//VectorCopy(start, org);
 	VectorAdd(end, ofs, point);
 
 	tracefunc(trace, org, playerHeadProneMins, playerHeadProneMaxs, point, ignoreent, tracemask);
@@ -863,6 +865,8 @@ static qboolean PM_CheckProne(void)
 		     (pm->cmd.wbuttons & WBUTTON_PRONE)) && pm->cmd.serverTime - -pm->pmext->proneTime > pronedelay)
 		{
 			trace_t trace;
+			vec3_t  end;
+			vec3_t  oldOrigin;
 
 			pm->mins[0] = pm->ps->mins[0];
 			pm->mins[1] = pm->ps->mins[1];
@@ -873,9 +877,69 @@ static qboolean PM_CheckProne(void)
 			pm->mins[2] = pm->ps->mins[2];
 			pm->maxs[2] = pm->ps->crouchMaxZ;
 
-			pm->ps->eFlags |= EF_PRONE;
-			PM_TraceAll(&trace, pm->ps->origin, pm->ps->origin);
-			pm->ps->eFlags &= ~EF_PRONE;
+			BG_LegsCollisionBoxOffset(pm->ps->viewangles, EF_PRONE, end);
+			VectorAdd(pm->ps->origin, end, end);
+
+			pm->trace(&trace, pm->ps->origin, playerlegsProneMins, playerlegsProneMaxs, end, pm->ps->clientNum, pm->tracemask);
+
+			if (trace.fraction != 1.f)
+			{
+				VectorSubtract(trace.endpos, end, end);
+				VectorCopy(pm->ps->origin, oldOrigin);
+
+				pm->ps->eFlags |= EF_PRONE;
+				PM_StepSlideMove(qfalse);
+				PM_TraceAll(&trace, pm->ps->origin, pm->ps->origin);
+
+				if (trace.startsolid || trace.allsolid || trace.fraction != 1.f)
+				{
+					// push back the origin and retry
+					VectorAdd(oldOrigin, end, pm->ps->origin);
+					PM_StepSlideMove(qfalse);
+					PM_TraceAll(&trace, pm->ps->origin, pm->ps->origin);
+
+					if (trace.startsolid || trace.allsolid || trace.fraction != 1.f)
+					{
+						pm->ps->eFlags &= ~EF_PRONE;
+						VectorCopy(oldOrigin, pm->ps->origin);
+						return qfalse;
+					}
+				}
+				pm->ps->eFlags &= ~EF_PRONE;
+			}
+			else
+			{
+				BG_HeadCollisionBoxOffset(pm->ps->viewangles, EF_PRONE, end);
+				VectorAdd(pm->ps->origin, end, end);
+
+				pm->trace(&trace, pm->ps->origin, playerHeadProneMins, playerHeadProneMaxs, end, pm->ps->clientNum, pm->tracemask);
+
+				if (trace.fraction != 1.f)
+				{
+					VectorSubtract(trace.endpos, end, end);
+					VectorCopy(pm->ps->origin, oldOrigin);
+
+					pm->ps->eFlags |= EF_PRONE;
+					PM_StepSlideMove(qfalse);
+					PM_TraceAll(&trace, pm->ps->origin, pm->ps->origin);
+
+					if (trace.startsolid || trace.allsolid || trace.fraction != 1.f)
+					{
+						// push back the origin and retry
+						VectorAdd(oldOrigin, end, pm->ps->origin);
+						PM_StepSlideMove(qfalse);
+						PM_TraceAll(&trace, pm->ps->origin, pm->ps->origin);
+
+						if (trace.startsolid || trace.allsolid || trace.fraction != 1.f)
+						{
+							pm->ps->eFlags &= ~EF_PRONE;
+							VectorCopy(oldOrigin, pm->ps->origin);
+							return qfalse;
+						}
+					}
+					pm->ps->eFlags &= ~EF_PRONE;
+				}
+			}
 
 			if (PM_PRONEDELAY)
 			{
@@ -2953,6 +3017,11 @@ void PM_AdjustAimSpreadScale(void)
 			for (i = 0; i < 2; i++)
 			{
 				viewchange += Q_fabs(SHORT2ANGLE(pm->cmd.angles[i]) - SHORT2ANGLE(pm->oldcmd.angles[i]));
+
+				if (viewchange > 180)
+				{
+					viewchange = 360 - viewchange;
+				}
 			}
 		}
 
@@ -4006,7 +4075,7 @@ void PM_UpdateLean(playerState_t *ps, usercmd_t *cmd, pmove_t *tpm)
  *
  * @note Unused trace parameter
  */
-void PM_UpdateViewAngles(playerState_t *ps, pmoveExt_t *pmext, usercmd_t *cmd, void (trace) (trace_t *results, const vec3_t start, const vec3_t mins, const vec3_t maxs, const vec3_t end, int passEntityNum, int contentMask), int tracemask)                     //   modified
+void PM_UpdateViewAngles(playerState_t *ps, pmoveExt_t *pmext, usercmd_t *cmd, void(trace) (trace_t *results, const vec3_t start, const vec3_t mins, const vec3_t maxs, const vec3_t end, int passEntityNum, int contentMask), int tracemask)                      //   modified
 {
 	short  temp;
 	int    i;
@@ -4388,8 +4457,8 @@ void PM_UpdateViewAngles(playerState_t *ps, pmoveExt_t *pmext, usercmd_t *cmd, v
 			// we know our main body isn't in a solid, check for our legs then head
 			vec3_t start, end;
 
-			BG_LegsCollisionBoxOffset(pm->ps->viewangles, pm->ps->eFlags, start);
-			BG_LegsCollisionBoxOffset(oldViewAngles, pm->ps->eFlags, end);
+			BG_LegsCollisionBoxOffset(pm->ps->viewangles, pm->ps->eFlags, end);
+			BG_LegsCollisionBoxOffset(oldViewAngles, pm->ps->eFlags, start);
 
 			VectorAdd(pm->ps->origin, start, start);
 			VectorAdd(pm->ps->origin, end, end);
@@ -4397,22 +4466,43 @@ void PM_UpdateViewAngles(playerState_t *ps, pmoveExt_t *pmext, usercmd_t *cmd, v
 			// check the new angles position for legs
 			pm->trace(&traceres, start, playerlegsProneMins, playerlegsProneMaxs, end, pm->ps->clientNum, tracemask);
 
-			if (traceres.startsolid)
+			if (traceres.fraction != 1.f)
 			{
-				VectorSubtract(traceres.endpos, start, traceres.endpos);
-				VectorMA(ps->origin, traceres.fraction, traceres.endpos,
-				         end);
+				// is plane valid, try to find one?
+				if (VectorCompare(traceres.plane.normal, vec3_origin))
+				{
+					pm->trace(&traceres, ps->origin, playerHeadProneMins, playerHeadProneMaxs, end, pm->ps->clientNum, tracemask);
 
-				// check the new position for head
-				PM_TraceHead(&traceres, end, end, NULL,
-				             pm->ps->viewangles, pm->trace, pm->ps->clientNum,
-				             pm->tracemask);
+					// still invalid, can't rotate
+					if (VectorCompare(traceres.plane.normal, vec3_origin))
+					{
+						if (pm->debugLevel)
+						{
+							Com_Printf("%i:rotate in solid\n", c_pmove);
+						}
+
+						// starting in a solid, no space
+						ps->viewangles[YAW]   = oldYaw;
+						ps->delta_angles[YAW] = ANGLE2SHORT(ps->viewangles[YAW]) - cmd->angles[YAW];
+					}
+				}
+
+				// adjust position by bumping
+				VectorSubtract(end, start, end);
+
+				end[0] *= traceres.plane.normal[0];
+				end[1] *= traceres.plane.normal[1];
+				end[2] *= traceres.plane.normal[2];
+				VectorAdd(ps->origin, end, end);
+
+				// check the new position
+				PM_TraceAll(&traceres, end, end);
 
 				if (traceres.fraction != 1.f /* && trace.entityNum >= MAX_CLIENTS */)
 				{
 					if (pm->debugLevel)
 					{
-						Com_Printf("%i:can't rotate\n", c_pmove);
+						Com_Printf("%i:rotate in solid\n", c_pmove);
 					}
 
 					// starting in a solid, no space
@@ -4421,13 +4511,15 @@ void PM_UpdateViewAngles(playerState_t *ps, pmoveExt_t *pmext, usercmd_t *cmd, v
 
 					return;
 				}
-
-				VectorCopy(end, ps->origin);
+				else
+				{
+					VectorCopy(end, ps->origin);
+				}
 			}
 			else
 			{
-				BG_HeadCollisionBoxOffset(pm->ps->viewangles, pm->ps->eFlags, start);
-				BG_HeadCollisionBoxOffset(oldViewAngles, pm->ps->eFlags, end);
+				BG_HeadCollisionBoxOffset(pm->ps->viewangles, pm->ps->eFlags, end);
+				BG_HeadCollisionBoxOffset(oldViewAngles, pm->ps->eFlags, start);
 
 				VectorAdd(pm->ps->origin, start, start);
 				VectorAdd(pm->ps->origin, end, end);
@@ -4435,23 +4527,43 @@ void PM_UpdateViewAngles(playerState_t *ps, pmoveExt_t *pmext, usercmd_t *cmd, v
 				// check the new angles position for head
 				pm->trace(&traceres, start, playerHeadProneMins, playerHeadProneMaxs, end, pm->ps->clientNum, tracemask);
 
-				if (traceres.startsolid)
+				if (traceres.fraction != 1.f)
 				{
-					// adjust position by bumping
-					VectorSubtract(traceres.endpos, start, traceres.endpos);
-					VectorMA(ps->origin, traceres.fraction, traceres.endpos,
-					         end);
+					// is plane valid, try to find one?
+					if (VectorCompare(traceres.plane.normal, vec3_origin))
+					{
+						pm->trace(&traceres, ps->origin, playerHeadProneMins, playerHeadProneMaxs, end, pm->ps->clientNum, tracemask);
 
-					// check the new position for legs
-					PM_TraceLegs(&traceres, &pmext->proneLegsOffset, end, end, NULL,
-					             pm->ps->viewangles, pm->trace, pm->ps->clientNum,
-					             pm->tracemask);
+						// still invalid, can't rotate
+						if (VectorCompare(traceres.plane.normal, vec3_origin))
+						{
+							if (pm->debugLevel)
+							{
+								Com_Printf("%i:rotate in solid\n", c_pmove);
+							}
+
+							// starting in a solid, no space
+							ps->viewangles[YAW]   = oldYaw;
+							ps->delta_angles[YAW] = ANGLE2SHORT(ps->viewangles[YAW]) - cmd->angles[YAW];
+						}
+					}
+
+					// adjust position by bumping
+					VectorSubtract(end, start, end);
+
+					end[0] *= traceres.plane.normal[0];
+					end[1] *= traceres.plane.normal[1];
+					end[2] *= traceres.plane.normal[2];
+					VectorAdd(ps->origin, end, end);
+
+					// check the new position
+					PM_TraceAll(&traceres, end, end);
 
 					if (traceres.fraction != 1.f /* && trace.entityNum >= MAX_CLIENTS */)
 					{
 						if (pm->debugLevel)
 						{
-							Com_Printf("%i:can't rotate\n", c_pmove);
+							Com_Printf("%i:rotate in solid\n", c_pmove);
 						}
 
 						// starting in a solid, no space
@@ -4460,8 +4572,10 @@ void PM_UpdateViewAngles(playerState_t *ps, pmoveExt_t *pmext, usercmd_t *cmd, v
 
 						return;
 					}
-
-					VectorCopy(end, ps->origin);
+					else
+					{
+						VectorCopy(end, ps->origin);
+					}
 				}
 			}
 
@@ -5107,10 +5221,6 @@ void PmoveSingle(pmove_t *pmove)
 
 	if (PM_FIXEDPHYSICS)
 	{
-		// Pmove accurate code
-		// the new way: don't care so much about 6 bytes/frame
-		// or so of network bandwidth, and add some mostly framerate-
-		// independent error to make up for the lack of rounding error
 		// halt if not going fast enough (0.5 units/sec)
 		if (VectorLengthSquared(pm->ps->velocity) < 0.25f)
 		{
@@ -5118,43 +5228,30 @@ void PmoveSingle(pmove_t *pmove)
 		}
 		else
 		{
-			int   i;
-			float fac;
-			float fps = PM_FIXEDPHYSICSFPS;
+			float fixedFrameTime, scale, decimalTest;
+			float result = 0;
+			int   fps    = PM_FIXEDPHYSICSFPS;
 
 			if (fps > 333)
 			{
 				fps = 333;
 			}
-			else if (fps < 60)
+			else if (fps < 30)
 			{
-				fps = 60;
+				fps = 30;
 			}
 
-			fac = pml.msec / (1000.0f / fps);
+			fixedFrameTime = (int)(1000.0f / fps) * 0.001f;
+			decimalTest    = pm->ps->gravity * fixedFrameTime;
 
-			// add some error...
-			for (i = 0; i < 3; ++i)
+			if (rint(decimalTest) - decimalTest < 0)
 			{
-				// ...if the velocity in this direction changed enough
-				if (Q_fabs(pm->ps->velocity[i] - pml.previous_velocity[i]) > 0.5f / fac)
-				{
-					if (pm->ps->velocity[i] < 0)
-					{
-						pm->ps->velocity[i] -= 0.5f * fac;
-					}
-					else
-					{
-						pm->ps->velocity[i] += 0.5f * fac;
-					}
-				}
+				scale  = fixedFrameTime / pml.frametime;
+				result = (rint(decimalTest) - decimalTest) * -1;
+				result = result / scale;
 			}
-			// we can stand a little bit of rounding error for the sake
-			// of lower bandwidth
-			VectorScale(pm->ps->velocity, 64.0f, pm->ps->velocity);
-			// snap some parts of playerstate to save network bandwidth
-			trap_SnapVector(pm->ps->velocity);
-			VectorScale(pm->ps->velocity, 1.0f / 64.0f, pm->ps->velocity);
+
+			pm->ps->velocity[2] += result;
 		}
 	}
 	else
